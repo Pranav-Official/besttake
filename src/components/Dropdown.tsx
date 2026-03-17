@@ -96,7 +96,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute bottom-full left-0 w-full mb-2 bg-[#022540] border border-[#1d417c] rounded-lg shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute top-full left-0 w-full mt-2 bg-[#022540] border border-[#1d417c] rounded-lg shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
           <div className="p-1">
             {options.map((option) => (
               <button
