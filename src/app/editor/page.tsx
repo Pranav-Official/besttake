@@ -210,6 +210,8 @@ const EditorPage: React.FC = () => {
     }
   };
 
+  const [isTranscribing, setIsTranscribing] = useState(false);
+
   const onUpload = useCallback(
     async (src: string, file: File, serverUrl?: string) => {
       if (videoSrc && videoSrc.startsWith("blob:")) {
@@ -260,9 +262,38 @@ const EditorPage: React.FC = () => {
         setNativeDimensions({ width: metadata.width, height: metadata.height });
         setVideoSrc(src);
         setServerVideoUrl(serverUrl);
-        setTranscription(
-          generateMockTranscription(metadata.durationInSeconds ?? 20),
-        );
+
+        // REAL TRANSCRIPTION: Start transcription if we have a serverUrl
+        if (serverUrl) {
+          setIsTranscribing(true);
+          try {
+            const transcribeRes = await fetch("/api/transcribe", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ videoSrc: serverUrl }),
+            });
+
+            if (!transcribeRes.ok) {
+              throw new Error("Transcription failed");
+            }
+
+            const realTranscription = await transcribeRes.json();
+            setTranscription(realTranscription);
+          } catch (err) {
+            console.error("Transcription failed, falling back to mock:", err);
+            setTranscription(
+              generateMockTranscription(metadata.durationInSeconds ?? 20),
+            );
+          } finally {
+            setIsTranscribing(false);
+          }
+        } else {
+          // Fallback if local disk upload failed
+          setTranscription(
+            generateMockTranscription(metadata.durationInSeconds ?? 20),
+          );
+        }
+
         setClips([
           {
             id: "initial-clip",
@@ -664,6 +695,20 @@ const EditorPage: React.FC = () => {
                 >
                   Try anyway
                 </Button>
+              </div>
+            </div>
+          )}
+
+          {isTranscribing && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#011626]/70 backdrop-blur-sm p-10 text-center">
+              <div className="max-w-xs flex flex-col items-center">
+                <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
+                <h3 className="text-xl font-bold mb-2">
+                  Transcribing video...
+                </h3>
+                <p className="text-subtitle">
+                  Generating word-level timestamps with AI.
+                </p>
               </div>
             </div>
           )}
