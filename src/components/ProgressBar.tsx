@@ -10,10 +10,18 @@ export const ProgressBar: React.FC<{
   }, [progress]);
 
   return (
-    <div>
-      <div className="w-full h-2.5 rounded-md appearance-none bg-unfocused-border-color mt-2.5 mb-6">
+    <div className="w-full">
+      <div className="flex justify-between items-center mb-2">
+        <span className="text-xs font-bold text-primary uppercase tracking-widest">
+          Rendering Progress
+        </span>
+        <span className="text-xs font-bold text-primary">
+          {Math.round(progress * 100)}%
+        </span>
+      </div>
+      <div className="w-full h-3 rounded-full bg-unfocused-border overflow-hidden">
         <div
-          className="bg-foreground h-2.5 rounded-md transition-all ease-in-out duration-100"
+          className="bg-primary h-full rounded-full transition-all ease-in-out duration-300 shadow-[0_0_10px_rgba(156,178,215,0.4)]"
           style={fill}
         ></div>
       </div>

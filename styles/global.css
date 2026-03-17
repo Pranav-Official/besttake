@@ -1,46 +1,64 @@
 @import "tailwindcss";
 
 :root {
-  --background: #fff;
-  --foreground: #000;
-  --unfocused-border-color: #eaeaea;
-  --focused-border-color: #666;
+  /* Colors from design.md */
+  --text: #f1f2f3;
+  --background: #011626;
+  --primary: #9cb2d7;
+  --secondary: #1d417c;
+  --accent: #7ead70;
 
-  --button-disabled-color: #fafafa;
-  --disabled-text-color: #999;
+  /* Semantic Colors */
+  --blue: #3b82f6;
+  --red: #ef4444;
+  --yellow: #f59e0b;
+  --green: #10b981;
 
-  --geist-border-radius: 5px;
-  --geist-quarter-pad: 6px;
-  --geist-half-pad: 12px;
-  --geist-pad: 24px;
-  --geist-font: "Inter";
+  /* Overriding existing defaults */
+  --foreground: var(--text);
+  --unfocused-border-color: rgba(255, 255, 255, 0.1);
+  --focused-border-color: var(--primary);
 
-  --geist-error: #e00;
+  --button-disabled-color: rgba(255, 255, 255, 0.05);
+  --disabled-text-color: rgba(255, 255, 255, 0.4);
 
-  --subtitle: #666;
+  --geist-border-radius: 12px;
+  --geist-quarter-pad: 4px;
+  --geist-half-pad: 8px;
+  --geist-pad: 16px;
+  --geist-font:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  --geist-error: var(--red);
+
+  --subtitle: rgba(255, 255, 255, 0.6);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #000000;
-    --unfocused-border-color: #333;
-    --focused-border-color: #888;
-    --foreground: #fff;
-    --button-disabled-color: #111;
-    --geist-error: red;
-    --subtitle: #8d8d8d;
+    --background: #011626;
   }
 }
 
 @theme {
   --color-foreground: var(--foreground);
   --color-background: var(--background);
-  --color-unfocused-border-color: var(--unfocused-border-color);
-  --color-focused-border-color: var(--focused-border-color);
-  --color-button-disabled-color: var(--button-disabled-color);
-  --color-disabled-text-color: var(--disabled-text-color);
+  --color-primary: var(--primary);
+  --color-secondary: var(--secondary);
+  --color-accent: var(--accent);
+
+  --color-blue: var(--blue);
+  --color-red: var(--red);
+  --color-yellow: var(--yellow);
+  --color-green: var(--green);
+
+  --color-unfocused-border: var(--unfocused-border-color);
+  --color-focused-border: var(--focused-border-color);
+  --color-button-disabled: var(--button-disabled-color);
+  --color-disabled-text: var(--disabled-text-color);
   --color-geist-error: var(--geist-error);
   --color-subtitle: var(--subtitle);
+
   --padding-geist-quarter: var(--geist-quarter-pad);
   --padding-geist-half: var(--geist-half-pad);
   --padding-geist: var(--geist-pad);
@@ -59,4 +77,22 @@
       opacity: 0.15;
     }
   }
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--geist-font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  letter-spacing: -0.02em;
+  line-height: 1.2;
 }

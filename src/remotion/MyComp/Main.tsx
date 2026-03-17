@@ -1,6 +1,7 @@
 import { fontFamily, loadFont } from "@remotion/google-fonts/Inter";
 import {
   AbsoluteFill,
+  Video,
   Sequence,
   spring,
   useCurrentFrame,
@@ -16,9 +17,15 @@ loadFont("normal", {
   subsets: ["latin"],
   weights: ["400", "700"],
 });
-export const Main = ({ title }: z.infer<typeof CompositionProps>) => {
+
+export const Main = ({
+  title,
+  videoSrc,
+  transcription,
+}: z.infer<typeof CompositionProps>) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  // const currentTime = frame / fps;
 
   const transitionStart = 2 * fps;
   const transitionDuration = 1 * fps;
@@ -33,26 +40,48 @@ export const Main = ({ title }: z.infer<typeof CompositionProps>) => {
     delay: transitionStart,
   });
 
+  // const activeWord = transcription?.find(
+  //   (word) => currentTime >= word.start && currentTime <= word.end,
+  // );
+
   return (
-    <AbsoluteFill className="bg-white">
-      <Sequence durationInFrames={transitionStart + transitionDuration}>
-        <Rings outProgress={logoOut}></Rings>
-        <AbsoluteFill className="justify-center items-center">
-          <NextLogo outProgress={logoOut}></NextLogo>
-        </AbsoluteFill>
-      </Sequence>
-      <Sequence from={transitionStart + transitionDuration / 2}>
-        <TextFade>
-          <h1
-            className="text-[70px] font-bold"
+    <AbsoluteFill
+      style={{ backgroundColor: videoSrc ? "transparent" : "#011626" }}
+    >
+      {videoSrc ? (
+        <AbsoluteFill style={{ backgroundColor: "black" }}>
+          <Video
+            src={videoSrc}
             style={{
-              fontFamily,
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+              backgroundColor: "black",
             }}
-          >
-            {title}
-          </h1>
-        </TextFade>
-      </Sequence>
+          />
+        </AbsoluteFill>
+      ) : (
+        <AbsoluteFill className="bg-white">
+          <Sequence durationInFrames={transitionStart + transitionDuration}>
+            <Rings outProgress={logoOut}></Rings>
+            <AbsoluteFill className="justify-center items-center">
+              <NextLogo outProgress={logoOut}></NextLogo>
+            </AbsoluteFill>
+          </Sequence>
+          <Sequence from={transitionStart + transitionDuration / 2}>
+            <TextFade>
+              <h1
+                className="text-[70px] font-bold text-black"
+                style={{
+                  fontFamily,
+                }}
+              >
+                {title}
+              </h1>
+            </TextFade>
+          </Sequence>
+        </AbsoluteFill>
+      )}
     </AbsoluteFill>
   );
 };
