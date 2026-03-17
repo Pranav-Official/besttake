@@ -11,8 +11,10 @@ export const WordTranscriptionSchema = z.object({
 
 export const ClipSchema = z.object({
   id: z.string(),
-  sourceStart: z.number(), // in seconds
-  sourceEnd: z.number(), // in seconds
+  sourceStart: z.number(), // in seconds (includes padding)
+  sourceEnd: z.number(), // in seconds (includes padding)
+  logicalStart: z.number().optional(), // in seconds (unpadded)
+  logicalEnd: z.number().optional(), // in seconds (unpadded)
 });
 
 export const CompositionProps = z.object({

@@ -49,8 +49,11 @@ export const TranscriptionView: React.FC<TranscriptionViewProps> = ({
     }[] = [];
 
     clips.forEach((clip) => {
+      const lStart = clip.logicalStart ?? clip.sourceStart;
+      const lEnd = clip.logicalEnd ?? clip.sourceEnd;
+
       const wordsInClip = transcription.filter(
-        (w) => w.start >= clip.sourceStart && w.end <= clip.sourceEnd,
+        (w) => w.start >= lStart - 0.01 && w.end <= lEnd + 0.01,
       );
       wordsInClip.forEach((word) => {
         items.push({

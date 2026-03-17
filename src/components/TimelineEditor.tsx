@@ -13,6 +13,8 @@ interface TimelineEditorProps {
   onPaddingEnabledChange: (enabled: boolean) => void;
   paddingDuration: number;
   onPaddingDurationChange: (duration: number) => void;
+  onTrimSilences: (noiseThreshold: number, minDuration: number) => void;
+  isTrimmingSilences: boolean;
   className?: string;
 }
 
@@ -27,11 +29,18 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
   onPaddingEnabledChange,
   paddingDuration,
   onPaddingDurationChange,
+  onTrimSilences,
+  isTrimmingSilences,
   className,
 }) => {
   const [zoom, setZoom] = useState(50); // pixels per second
   const containerRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+
+  // Silence Tool State
+  const [showSilenceTool, setShowSilenceTool] = useState(false);
+  const [noiseThreshold, setNoiseThreshold] = useState(-20);
+  const [minDuration, setMinDuration] = useState(0.5);
 
   const processedClips = useMemo(() => {
     let accumulatedTimelineStart = 0;
@@ -41,8 +50,11 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
       accumulatedTimelineStart += duration;
 
       // Find text preview
+      const lStart = clip.logicalStart ?? clip.sourceStart;
+      const lEnd = clip.logicalEnd ?? clip.sourceEnd;
+
       const wordsInClip = transcription.filter(
-        (w) => w.start >= clip.sourceStart && w.end <= clip.sourceEnd,
+        (w) => w.start >= lStart - 0.01 && w.end <= lEnd + 0.01,
       );
       const textPreview =
         wordsInClip
@@ -152,6 +164,119 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Trim Silences Tool */}
+          <div className="relative">
+            <button
+              onClick={() => setShowSilenceTool(!showSilenceTool)}
+              disabled={isTrimmingSilences}
+              className={cn(
+                "h-7 px-2 flex items-center gap-1.5 rounded bg-[#011626]/40 border border-[#1d417c] text-[10px] font-bold text-[#9cb2d7] hover:bg-[#1d417c]/40 hover:text-[#f1f2f3] transition-all",
+                isTrimmingSilences && "opacity-50 cursor-not-allowed",
+              )}
+              title="Auto-trim silences"
+            >
+              {isTrimmingSilences ? (
+                <>
+                  <div className="w-2.5 h-2.5 border-2 border-[#9cb2d7] border-t-transparent rounded-full animate-spin"></div>
+                  <span>TRIMMING...</span>
+                </>
+              ) : (
+                <>
+                  <svg
+                    className="w-3.5 h-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2.5"
+                      d="M13 10V3L4 14h7v7l9-11h-7z"
+                    />
+                  </svg>
+                  <span>TRIM SILENCES</span>
+                </>
+              )}
+            </button>
+
+            {showSilenceTool && (
+              <div className="absolute top-full mt-2 right-0 w-56 bg-[#022540] border border-[#1d417c] rounded-lg shadow-2xl p-4 z-[100] animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex justify-between items-center">
+                      <label className="text-[10px] font-bold text-[#9cb2d7] uppercase tracking-wider">
+                        Noise Threshold
+                      </label>
+                      <span className="text-[10px] font-mono text-[#f1f2f3]">
+                        {noiseThreshold} dB
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="-60"
+                      max="30"
+                      step="1"
+                      value={noiseThreshold}
+                      onChange={(e) =>
+                        setNoiseThreshold(parseInt(e.target.value))
+                      }
+                      className="w-full h-1 bg-[#1d417c] rounded-full appearance-none cursor-pointer accent-[#9cb2d7]"
+                    />
+                    <div className="flex justify-between text-[8px] text-[#9cb2d7]/40 uppercase">
+                      <span>Quiet</span>
+                      <span>Loud</span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex justify-between items-center">
+                      <label className="text-[10px] font-bold text-[#9cb2d7] uppercase tracking-wider">
+                        Min Silence Duration
+                      </label>
+                      <span className="text-[10px] font-mono text-[#f1f2f3]">
+                        {minDuration}s
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="2.0"
+                      step="0.1"
+                      value={minDuration}
+                      onChange={(e) =>
+                        setMinDuration(parseFloat(e.target.value))
+                      }
+                      className="w-full h-1 bg-[#1d417c] rounded-full appearance-none cursor-pointer accent-[#9cb2d7]"
+                    />
+                    <div className="flex justify-between text-[8px] text-[#9cb2d7]/40 uppercase">
+                      <span>Short</span>
+                      <span>Long</span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 pt-2 border-t border-[#1d417c]">
+                    <button
+                      onClick={() => setShowSilenceTool(false)}
+                      className="flex-1 px-3 py-1.5 rounded bg-transparent text-[#9cb2d7] hover:text-[#f1f2f3] text-[10px] font-bold transition-all uppercase"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        onTrimSilences(noiseThreshold, minDuration);
+                        setShowSilenceTool(false);
+                      }}
+                      className="flex-1 px-3 py-1.5 rounded bg-[#9cb2d7] text-[#011626] hover:bg-[#f1f2f3] text-[10px] font-bold transition-all uppercase"
+                    >
+                      Process
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Clip Padding Tool */}
           <div
             className="flex items-center bg-[#011626]/40 rounded-md border border-[#1d417c] p-0.5"

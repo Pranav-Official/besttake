@@ -51,6 +51,8 @@ const EditorPage: React.FC = () => {
   const [paddingEnabled, setPaddingEnabled] = useState(true);
   const [paddingDuration, setPaddingDuration] = useState(0.5);
 
+  const [isTrimmingSilences, setIsTrimmingSilences] = useState(false);
+
   const [isRendering, setIsRendering] = useState(false);
   const [renderProgress, setRenderProgress] = useState(0);
   const [renderStatus, setRenderStatus] = useState("");
@@ -303,6 +305,8 @@ const EditorPage: React.FC = () => {
             id: "initial-clip",
             sourceStart: 0,
             sourceEnd: metadata.durationInSeconds ?? 20,
+            logicalStart: 0,
+            logicalEnd: metadata.durationInSeconds ?? 20,
           },
         ]);
       } catch (err) {
@@ -316,6 +320,8 @@ const EditorPage: React.FC = () => {
             id: "initial-clip",
             sourceStart: 0,
             sourceEnd: 20,
+            logicalStart: 0,
+            logicalEnd: 20,
           },
         ]);
       }
@@ -363,8 +369,13 @@ const EditorPage: React.FC = () => {
 
         prev.forEach((clip) => {
           // Identify all words from the original transcript that are within this clip
+          // Use logical range for filtering if available, otherwise fall back to source
+          const lStart = clip.logicalStart ?? clip.sourceStart;
+          const lEnd = clip.logicalEnd ?? clip.sourceEnd;
+
+          // Epsilon (0.01) helps avoid floating point inaccuracies
           const wordsInClip = transcription.filter(
-            (w) => w.start >= clip.sourceStart && w.end <= clip.sourceEnd,
+            (w) => w.start >= lStart - 0.01 && w.end <= lEnd + 0.01,
           );
 
           // Keep only those that aren't being deleted
@@ -393,17 +404,18 @@ const EditorPage: React.FC = () => {
               // Finish previous segment and start new one
               if (currentSegment.length > 0) {
                 const finalPadding = paddingEnabled ? paddingDuration : 0;
+                const segStart = currentSegment[0].start;
+                const segEnd = currentSegment[currentSegment.length - 1].end;
+
                 nextClips.push({
                   id: `${clip.id}-${nextClips.length}`,
-                  sourceStart: Math.max(
-                    0,
-                    currentSegment[0].start - finalPadding,
-                  ),
+                  sourceStart: Math.max(0, segStart - finalPadding),
                   sourceEnd: Math.min(
                     transcription[transcription.length - 1]?.end || 10000,
-                    currentSegment[currentSegment.length - 1].end +
-                      finalPadding,
+                    segEnd + finalPadding,
                   ),
+                  logicalStart: segStart,
+                  logicalEnd: segEnd,
                 });
               }
               currentSegment = [word];
@@ -413,13 +425,18 @@ const EditorPage: React.FC = () => {
           // Final segment
           if (currentSegment.length > 0) {
             const finalPadding = paddingEnabled ? paddingDuration : 0;
+            const segStart = currentSegment[0].start;
+            const segEnd = currentSegment[currentSegment.length - 1].end;
+
             nextClips.push({
               id: `${clip.id}-${nextClips.length}`,
-              sourceStart: Math.max(0, currentSegment[0].start - finalPadding),
+              sourceStart: Math.max(0, segStart - finalPadding),
               sourceEnd: Math.min(
                 transcription[transcription.length - 1]?.end || 10000,
-                currentSegment[currentSegment.length - 1].end + finalPadding,
+                segEnd + finalPadding,
               ),
+              logicalStart: segStart,
+              logicalEnd: segEnd,
             });
           }
         });
@@ -433,9 +450,12 @@ const EditorPage: React.FC = () => {
   const deletedWordIds = useMemo(() => {
     const ids = new Set<string>();
     transcription.forEach((word) => {
-      const isCovered = clips.some(
-        (clip) => word.start < clip.sourceEnd && word.end > clip.sourceStart,
-      );
+      const midpoint = (word.start + word.end) / 2;
+      const isCovered = clips.some((clip) => {
+        const lStart = clip.logicalStart ?? clip.sourceStart;
+        const lEnd = clip.logicalEnd ?? clip.sourceEnd;
+        return midpoint >= lStart - 0.01 && midpoint <= lEnd + 0.01;
+      });
       if (!isCovered) ids.add(word.id);
     });
     return ids;
@@ -548,6 +568,76 @@ const EditorPage: React.FC = () => {
       });
     },
     [transcription, clips, setClips],
+  );
+
+  const onTrimSilences = useCallback(
+    async (noiseThreshold: number, minDuration: number) => {
+      if (!serverVideoUrl) return;
+
+      setIsTrimmingSilences(true);
+      try {
+        const res = await fetch("/api/silence", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            videoSrc: serverVideoUrl,
+            noiseThresholdInDecibels: noiseThreshold,
+            minDurationInSeconds: minDuration,
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error("Silence detection failed");
+        }
+
+        const { audibleParts } = await res.json();
+
+        // Map audible parts to Clip objects
+        const nextClips: Clip[] = audibleParts.map(
+          (
+            part: { startInSeconds: number; endInSeconds: number },
+            i: number,
+          ) => {
+            const finalPadding = paddingEnabled ? paddingDuration : 0;
+            return {
+              id: `audible-${i}-${Date.now()}`,
+              sourceStart: Math.max(0, part.startInSeconds - finalPadding),
+              sourceEnd: Math.min(
+                transcription[transcription.length - 1]?.end || 10000,
+                part.endInSeconds + finalPadding,
+              ),
+              logicalStart: part.startInSeconds,
+              logicalEnd: part.endInSeconds,
+            };
+          },
+        );
+
+        if (nextClips.length > 0) {
+          setClips(nextClips);
+          // Seek to beginning
+          if (playerRef.current) {
+            playerRef.current.seekTo(0);
+            setCurrentFrame(0);
+            lastFrameRef.current = 0;
+          }
+        } else {
+          alert("No audible parts detected with these settings.");
+        }
+      } catch (err) {
+        console.error("Silence trim error:", err);
+        alert("Failed to trim silences. Check console for details.");
+      } finally {
+        setIsTrimmingSilences(false);
+      }
+    },
+    [
+      serverVideoUrl,
+      paddingEnabled,
+      paddingDuration,
+      transcription,
+      setClips,
+      playerRef,
+    ],
   );
 
   useEffect(() => {
@@ -907,6 +997,8 @@ const EditorPage: React.FC = () => {
         onPaddingEnabledChange={setPaddingEnabled}
         paddingDuration={paddingDuration}
         onPaddingDurationChange={setPaddingDuration}
+        onTrimSilences={onTrimSilences}
+        isTrimmingSilences={isTrimmingSilences}
         onSeek={(frame) => {
           playerRef.current?.seekTo(frame);
           setCurrentFrame(frame);
