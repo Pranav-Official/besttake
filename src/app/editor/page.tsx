@@ -19,12 +19,16 @@ import { Dropdown } from "../../components/Dropdown";
 import { TranscriptionView } from "../../components/TranscriptionView";
 import { TimelineEditor } from "../../components/TimelineEditor";
 import { useHistory } from "../../hooks/useHistory";
+import { RenderModal } from "../../components/RenderModal";
 
 type AspectRatio = "original" | "16:9" | "9:16" | "1:1";
 
 const EditorPage: React.FC = () => {
   const playerRef = useRef<PlayerRef>(null);
   const [videoSrc, setVideoSrc] = useState<string | undefined>(undefined);
+  const [serverVideoUrl, setServerVideoUrl] = useState<string | undefined>(
+    undefined,
+  );
   const [transcription, setTranscription] = useState<WordTranscription[]>([]);
 
   const {
@@ -42,6 +46,22 @@ const EditorPage: React.FC = () => {
   const [selectedWordIds, setSelectedWordIds] = useState<Set<string>>(
     new Set(),
   );
+
+  const [isRendering, setIsRendering] = useState(false);
+  const [renderProgress, setRenderProgress] = useState(0);
+  const [renderStatus, setRenderStatus] = useState("");
+  const [renderError, setRenderError] = useState<string | null>(null);
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [showRenderModal, setShowRenderModal] = useState(false);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Dynamic Video Metadata
+  const [nativeDimensions, setNativeDimensions] = useState({
+    width: 1280,
+    height: 720,
+  });
+  const [selectedRatio, setSelectedRatio] = useState<AspectRatio>("original");
+  const [isUnsupportedCodec, setIsUnsupportedCodec] = useState(false);
 
   const editedDurationInFrames = useMemo(() => {
     if (clips.length === 0) return 300;
@@ -70,13 +90,29 @@ const EditorPage: React.FC = () => {
     return accumulatedTime;
   }, [currentFrame, clips]);
 
-  // Dynamic Video Metadata
-  const [nativeDimensions, setNativeDimensions] = useState({
-    width: 1280,
-    height: 720,
-  });
-  const [selectedRatio, setSelectedRatio] = useState<AspectRatio>("original");
-  const [isUnsupportedCodec, setIsUnsupportedCodec] = useState(false);
+  const dimensions = useMemo(() => {
+    const baseHeight = 720;
+    let w, h;
+
+    if (selectedRatio === "original") {
+      w = nativeDimensions.width;
+      h = nativeDimensions.height;
+    } else if (selectedRatio === "16:9") {
+      w = Math.round(baseHeight * (16 / 9));
+      h = baseHeight;
+    } else if (selectedRatio === "9:16") {
+      w = Math.round(baseHeight * (9 / 16));
+      h = baseHeight;
+    } else if (selectedRatio === "1:1") {
+      w = baseHeight;
+      h = baseHeight;
+    } else {
+      w = nativeDimensions.width;
+      h = nativeDimensions.height;
+    }
+
+    return { width: Math.max(1, w), height: Math.max(1, h) };
+  }, [nativeDimensions, selectedRatio]);
 
   useEffect(() => {
     return () => {
@@ -85,6 +121,12 @@ const EditorPage: React.FC = () => {
       }
     };
   }, [videoSrc]);
+
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, []);
 
   // Prevent back and reload
   useEffect(() => {
@@ -106,8 +148,70 @@ const EditorPage: React.FC = () => {
     };
   }, []);
 
+  const handleExport = async () => {
+    if (!serverVideoUrl) {
+      alert("Local video path not found. Please re-upload the video.");
+      return;
+    }
+
+    setIsRendering(true);
+    setRenderProgress(0);
+    setRenderStatus("Initiating export...");
+    setRenderError(null);
+    setDownloadUrl(null);
+    setShowRenderModal(true);
+
+    try {
+      const response = await fetch("/api/render", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          videoSrc: serverVideoUrl,
+          clips,
+          dimensions,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to start render");
+      }
+
+      const { id } = await response.json();
+
+      // Start polling
+      pollIntervalRef.current = setInterval(async () => {
+        try {
+          const statusRes = await fetch(`/api/render?id=${id}`);
+          if (!statusRes.ok) return;
+
+          const data = await statusRes.json();
+          setRenderProgress(data.progress);
+          setRenderStatus(data.status);
+
+          if (data.done) {
+            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+            setIsRendering(false);
+            if (data.error) {
+              setRenderError(data.error);
+            } else {
+              setDownloadUrl(data.url);
+            }
+          }
+        } catch (err) {
+          console.error("Polling error:", err);
+        }
+      }, 1000);
+    } catch (err) {
+      console.error("Export error:", err);
+      setRenderError((err as Error).message);
+      setIsRendering(false);
+    }
+  };
+
   const onUpload = useCallback(
-    async (src: string) => {
+    async (src: string, file: File, serverUrl?: string) => {
       if (videoSrc && videoSrc.startsWith("blob:")) {
         URL.revokeObjectURL(videoSrc);
       }
@@ -155,6 +259,7 @@ const EditorPage: React.FC = () => {
 
         setNativeDimensions({ width: metadata.width, height: metadata.height });
         setVideoSrc(src);
+        setServerVideoUrl(serverUrl);
         setTranscription(
           generateMockTranscription(metadata.durationInSeconds ?? 20),
         );
@@ -169,6 +274,7 @@ const EditorPage: React.FC = () => {
         console.error("Critical error loading video metadata:", err);
         setNativeDimensions({ width: 1280, height: 720 });
         setVideoSrc(src);
+        setServerVideoUrl(serverUrl);
         setTranscription(generateMockTranscription(20));
         setClips([
           {
@@ -397,30 +503,6 @@ const EditorPage: React.FC = () => {
     [transcription, clips, setClips],
   );
 
-  const dimensions = useMemo(() => {
-    const baseHeight = 720;
-    let w, h;
-
-    if (selectedRatio === "original") {
-      w = nativeDimensions.width;
-      h = nativeDimensions.height;
-    } else if (selectedRatio === "16:9") {
-      w = Math.round(baseHeight * (16 / 9));
-      h = baseHeight;
-    } else if (selectedRatio === "9:16") {
-      w = Math.round(baseHeight * (9 / 16));
-      h = baseHeight;
-    } else if (selectedRatio === "1:1") {
-      w = baseHeight;
-      h = baseHeight;
-    } else {
-      w = nativeDimensions.width;
-      h = nativeDimensions.height;
-    }
-
-    return { width: Math.max(1, w), height: Math.max(1, h) };
-  }, [nativeDimensions, selectedRatio]);
-
   useEffect(() => {
     const player = playerRef.current;
     if (!player) return;
@@ -538,8 +620,12 @@ const EditorPage: React.FC = () => {
               onChange={(v) => setSelectedRatio(v as AspectRatio)}
             />
           </div>
-          <button className="bg-[#9cb2d7] hover:bg-opacity-90 text-[#011626] text-xs px-4 py-1.5 rounded-md font-semibold">
-            Export Video
+          <button
+            onClick={handleExport}
+            disabled={isRendering || !videoSrc}
+            className="bg-[#9cb2d7] hover:bg-opacity-90 disabled:opacity-50 text-[#011626] text-xs px-4 py-1.5 rounded-md font-semibold"
+          >
+            {isRendering ? "Exporting..." : "Export Video"}
           </button>
         </div>
       </header>
@@ -761,6 +847,15 @@ const EditorPage: React.FC = () => {
           setCurrentFrame(frame);
           lastFrameRef.current = frame;
         }}
+      />
+
+      <RenderModal
+        isOpen={showRenderModal}
+        progress={renderProgress}
+        status={renderStatus}
+        error={renderError}
+        downloadUrl={downloadUrl}
+        onClose={() => setShowRenderModal(false)}
       />
     </div>
   );

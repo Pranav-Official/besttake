@@ -16,6 +16,7 @@
     "@remotion/media-utils": "^4.0.436",
     "@remotion/paths": "^4.0.436",
     "@remotion/player": "^4.0.436",
+    "@remotion/renderer": "^4.0.436",
     "@remotion/shapes": "^4.0.436",
     "@remotion/tailwind-v4": "^4.0.436",
     "clsx": "2.1.1",

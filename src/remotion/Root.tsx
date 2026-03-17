@@ -1,14 +1,31 @@
-import { Composition } from "remotion";
+import { Composition, CalculateMetadataFunction } from "remotion";
 import {
   COMP_NAME,
   defaultMyCompProps,
-  DURATION_IN_FRAMES,
   VIDEO_FPS,
   VIDEO_HEIGHT,
   VIDEO_WIDTH,
+  TCompositionProps,
 } from "../../types/constants";
 import { Main } from "./MyComp/Main";
 import { NextLogo } from "./MyComp/NextLogo";
+
+const calculateMetadata: CalculateMetadataFunction<TCompositionProps> = async ({
+  props,
+}) => {
+  const clips = props.clips || [];
+  if (clips.length === 0) {
+    return { durationInFrames: 300 };
+  }
+
+  const totalDuration = clips.reduce((acc, clip) => {
+    return acc + (clip.sourceEnd - clip.sourceStart);
+  }, 0);
+
+  return {
+    durationInFrames: Math.max(1, Math.ceil(totalDuration * VIDEO_FPS)),
+  };
+};
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -16,11 +33,12 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id={COMP_NAME}
         component={Main}
-        durationInFrames={DURATION_IN_FRAMES}
+        durationInFrames={600} // This is the default, overridden by calculateMetadata
         fps={VIDEO_FPS}
         width={VIDEO_WIDTH}
         height={VIDEO_HEIGHT}
         defaultProps={defaultMyCompProps}
+        calculateMetadata={calculateMetadata}
       />
       <Composition
         id="NextLogo"

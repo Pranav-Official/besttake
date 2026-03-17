@@ -1,4 +1,10 @@
-import { AbsoluteFill, Video, Series, useVideoConfig } from "remotion";
+import {
+  AbsoluteFill,
+  Video,
+  Series,
+  useVideoConfig,
+  staticFile,
+} from "remotion";
 import { z } from "zod";
 import { CompositionProps } from "../../../types/constants";
 
@@ -9,9 +15,15 @@ export const Main = ({
 }: z.infer<typeof CompositionProps>) => {
   const { fps } = useVideoConfig();
 
+  // If videoSrc is a path like "/uploads/...", resolve it relative to the public folder
+  const resolvedVideoSrc =
+    videoSrc && videoSrc.startsWith("/") ? staticFile(videoSrc) : videoSrc;
+
   return (
-    <AbsoluteFill style={{ backgroundColor: videoSrc ? "black" : "#011626" }}>
-      {videoSrc ? (
+    <AbsoluteFill
+      style={{ backgroundColor: resolvedVideoSrc ? "black" : "#011626" }}
+    >
+      {resolvedVideoSrc ? (
         <AbsoluteFill>
           <Series>
             {clips.map((clip) => {
@@ -24,7 +36,7 @@ export const Main = ({
                   premountFor={fps}
                 >
                   <Video
-                    src={videoSrc}
+                    src={resolvedVideoSrc}
                     startFrom={Math.floor(clip.sourceStart * fps)}
                     endAt={Math.ceil(clip.sourceEnd * fps)}
                     style={{
