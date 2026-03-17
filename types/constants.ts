@@ -3,6 +3,7 @@ import { z } from "zod";
 export const COMP_NAME = "MyComp";
 
 export const WordTranscriptionSchema = z.object({
+  id: z.string(),
   text: z.string(),
   start: z.number(), // in seconds
   end: z.number(), // in seconds
@@ -12,6 +13,7 @@ export const CompositionProps = z.object({
   title: z.string(),
   videoSrc: z.string().optional(),
   transcription: z.array(WordTranscriptionSchema).optional(),
+  deletedWordIds: z.array(z.string()).optional(),
 });
 
 export type WordTranscription = z.infer<typeof WordTranscriptionSchema>;

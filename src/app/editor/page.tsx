@@ -16,6 +16,8 @@ import { generateMockTranscription } from "../../helpers/mock-transcription";
 import { Button } from "../../components/Button";
 import { Dropdown } from "../../components/Dropdown";
 import { TranscriptionView } from "../../components/TranscriptionView";
+import { TimelineEditor } from "../../components/TimelineEditor";
+import { useHistory } from "../../hooks/useHistory";
 
 type AspectRatio = "original" | "16:9" | "9:16" | "1:1";
 
@@ -23,35 +25,60 @@ const EditorPage: React.FC = () => {
   const playerRef = useRef<PlayerRef>(null);
   const [videoSrc, setVideoSrc] = useState<string | undefined>(undefined);
   const [transcription, setTranscription] = useState<WordTranscription[]>([]);
+
+  const {
+    state: deletedWordIds,
+    set: setDeletedWordIds,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+  } = useHistory<Set<string>>(new Set());
+
   const [currentFrame, setCurrentFrame] = useState(0);
+  const [selectedWordIds, setSelectedWordIds] = useState<Set<string>>(
+    new Set(),
+  );
+
+  const editedDurationInFrames = useMemo(() => {
+    if (transcription.length === 0) return 300;
+
+    let totalDurationInSeconds = 0;
+    transcription.forEach((word) => {
+      if (!deletedWordIds.has(word.id)) {
+        totalDurationInSeconds += word.end - word.start;
+      }
+    });
+
+    return Math.max(1, Math.ceil(totalDurationInSeconds * VIDEO_FPS));
+  }, [transcription, deletedWordIds]);
+
+  const originalCurrentTime = useMemo(() => {
+    if (transcription.length === 0) return currentFrame / VIDEO_FPS;
+
+    let accumulatedTime = 0;
+    const targetEditedTime = currentFrame / VIDEO_FPS;
+
+    for (const word of transcription) {
+      if (!deletedWordIds.has(word.id)) {
+        const duration = word.end - word.start;
+        if (targetEditedTime <= accumulatedTime + duration) {
+          return word.start + (targetEditedTime - accumulatedTime);
+        }
+        accumulatedTime += duration;
+      }
+    }
+    return accumulatedTime;
+  }, [currentFrame, transcription, deletedWordIds]);
 
   // Dynamic Video Metadata
   const [nativeDimensions, setNativeDimensions] = useState({
     width: 1280,
     height: 720,
   });
-  const [durationInFrames, setDurationInFrames] = useState(300);
   const [selectedRatio, setSelectedRatio] = useState<AspectRatio>("original");
   const [isUnsupportedCodec, setIsUnsupportedCodec] = useState(false);
 
-  useEffect(() => {
-    const { current } = playerRef;
-    if (!current) {
-      return;
-    }
-
-    const onFrameUpdate = (e: { detail: { frame: number } }) => {
-      setCurrentFrame(e.detail.frame);
-    };
-
-    current.addEventListener("frameupdate", onFrameUpdate);
-
-    return () => {
-      current.removeEventListener("frameupdate", onFrameUpdate);
-    };
-  }, [videoSrc]);
-
-  // Cleanup blob URLs to prevent memory leaks
   useEffect(() => {
     return () => {
       if (videoSrc && videoSrc.startsWith("blob:")) {
@@ -60,87 +87,159 @@ const EditorPage: React.FC = () => {
     };
   }, [videoSrc]);
 
-  const onUpload = useCallback(async (src: string, file: File) => {
-    // Revoke previous blob URL to prevent memory leaks
-    if (videoSrc && videoSrc.startsWith("blob:")) {
-      URL.revokeObjectURL(videoSrc);
-    }
+  const onUpload = useCallback(
+    async (src: string) => {
+      if (videoSrc && videoSrc.startsWith("blob:")) {
+        URL.revokeObjectURL(videoSrc);
+      }
 
-    const fetchMetadata = async (videoUrl: string) => {
-      try {
-        const meta = await parseMedia({
-          src: videoUrl,
-          fields: {
-            width: true,
-            height: true,
-            durationInSeconds: true,
-          },
-        });
-        return {
-          width: Math.max(1, meta.width),
-          height: Math.max(1, meta.height),
-          durationInSeconds: meta.durationInSeconds,
-        };
-      } catch (remotionError) {
-        return new Promise<{
-          width: number;
-          height: number;
-          durationInSeconds: number;
-        }>((resolve, reject) => {
-          const video = document.createElement("video");
-          video.preload = "metadata";
-          video.onloadedmetadata = () => {
-            resolve({
-              width: Math.max(1, video.videoWidth),
-              height: Math.max(1, video.videoHeight),
-              durationInSeconds: video.duration || 1,
-            });
+      const fetchMetadata = async (videoUrl: string) => {
+        try {
+          const meta = await parseMedia({
+            src: videoUrl,
+            fields: { width: true, height: true, durationInSeconds: true },
+          });
+          return {
+            width: Math.max(1, meta.width),
+            height: Math.max(1, meta.height),
+            durationInSeconds: meta.durationInSeconds,
           };
-          video.onerror = () =>
-            reject(new Error("Manual metadata load failed"));
-          video.src = videoUrl;
-        });
+        } catch {
+          return new Promise<{
+            width: number;
+            height: number;
+            durationInSeconds: number;
+          }>((resolve, reject) => {
+            const video = document.createElement("video");
+            video.preload = "metadata";
+            video.onloadedmetadata = () => {
+              resolve({
+                width: Math.max(1, video.videoWidth),
+                height: Math.max(1, video.videoHeight),
+                durationInSeconds: video.duration || 1,
+              });
+            };
+            video.onerror = () =>
+              reject(new Error("Manual metadata load failed"));
+            video.src = videoUrl;
+          });
+        }
+      };
+
+      try {
+        setIsUnsupportedCodec(false);
+        const metadata = await fetchMetadata(src);
+
+        if (metadata.width <= 1 || metadata.height <= 1) {
+          setIsUnsupportedCodec(true);
+        }
+
+        setNativeDimensions({ width: metadata.width, height: metadata.height });
+        setVideoSrc(src);
+        setTranscription(
+          generateMockTranscription(metadata.durationInSeconds ?? 20),
+        );
+        setDeletedWordIds(new Set());
+      } catch (err) {
+        console.error("Critical error loading video metadata:", err);
+        setNativeDimensions({ width: 1280, height: 720 });
+        setVideoSrc(src);
+        setTranscription(generateMockTranscription(20));
+        setDeletedWordIds(new Set());
+      }
+    },
+    [videoSrc, setDeletedWordIds],
+  );
+
+  const getEditedTime = useCallback(
+    (originalStartTime: number) => {
+      let accumulatedEditedTime = 0;
+      for (const word of transcription) {
+        if (word.start >= originalStartTime) return accumulatedEditedTime;
+        if (!deletedWordIds.has(word.id)) {
+          accumulatedEditedTime += word.end - word.start;
+        }
+      }
+      return accumulatedEditedTime;
+    },
+    [transcription, deletedWordIds],
+  );
+
+  const onWordClick = useCallback(
+    (originalStartTime: number) => {
+      if (playerRef.current) {
+        const editedTime = getEditedTime(originalStartTime);
+        const frame = Math.floor(editedTime * VIDEO_FPS);
+        playerRef.current.seekTo(frame);
+        setCurrentFrame(frame);
+      }
+    },
+    [getEditedTime],
+  );
+
+  const onToggleWordDelete = useCallback(
+    (wordId: string) => {
+      setDeletedWordIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(wordId)) next.delete(wordId);
+        else next.add(wordId);
+        return next;
+      });
+    },
+    [setDeletedWordIds],
+  );
+
+  const onDeleteWords = useCallback(
+    (wordIds: string[]) => {
+      setDeletedWordIds((prev) => {
+        const next = new Set(prev);
+        wordIds.forEach((id) => next.add(id));
+        return next;
+      });
+    },
+    [setDeletedWordIds],
+  );
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 1. Undo/Redo
+      if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+        if (e.shiftKey) redo();
+        else undo();
+        return;
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "y") {
+        redo();
+        return;
+      }
+
+      // 2. Play/Pause (Space)
+      if (
+        e.key === " " &&
+        !["INPUT", "TEXTAREA", "BUTTON"].includes(
+          (e.target as HTMLElement).tagName,
+        )
+      ) {
+        e.preventDefault();
+        if (playerRef.current) {
+          if (playerRef.current.isPlaying()) playerRef.current.pause();
+          else playerRef.current.play();
+        }
+        return;
+      }
+
+      // 3. Delete Selection
+      if (
+        (e.key === "Delete" || e.key === "Backspace") &&
+        selectedWordIds.size > 0
+      ) {
+        onDeleteWords(Array.from(selectedWordIds));
+        setSelectedWordIds(new Set());
+        return;
       }
     };
-
-    try {
-      setIsUnsupportedCodec(false);
-      const metadata = await fetchMetadata(src);
-
-      if (metadata.width <= 1 || metadata.height <= 1) {
-        setIsUnsupportedCodec(true);
-      }
-
-      const frames = Math.max(
-        1,
-        Math.floor((metadata.durationInSeconds ?? 20) * VIDEO_FPS),
-      );
-
-      setDurationInFrames(frames);
-      setNativeDimensions({
-        width: metadata.width,
-        height: metadata.height,
-      });
-      setVideoSrc(src);
-
-      const mockData = generateMockTranscription(
-        metadata.durationInSeconds ?? 20,
-      );
-      setTranscription(mockData);
-    } catch (err) {
-      console.error("Critical error loading video metadata:", err);
-      setDurationInFrames(600);
-      setNativeDimensions({ width: 1280, height: 720 });
-      setVideoSrc(src);
-      setTranscription(generateMockTranscription(20));
-    }
-  }, []);
-
-  const onWordClick = useCallback((startTime: number) => {
-    if (playerRef.current) {
-      playerRef.current.seekTo(startTime * VIDEO_FPS);
-    }
-  }, []);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [undo, redo, selectedWordIds, onDeleteWords]);
 
   const dimensions = useMemo(() => {
     const baseHeight = 720;
@@ -163,19 +262,30 @@ const EditorPage: React.FC = () => {
       h = nativeDimensions.height;
     }
 
-    return {
-      width: Math.max(1, w),
-      height: Math.max(1, h),
-    };
+    return { width: Math.max(1, w), height: Math.max(1, h) };
   }, [nativeDimensions, selectedRatio]);
+
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player) return;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const onFrameUpdate = (e: any) => {
+      setCurrentFrame(e.detail.frame);
+    };
+
+    player.addEventListener("frameupdate", onFrameUpdate);
+    return () => player.removeEventListener("frameupdate", onFrameUpdate);
+  }, [videoSrc, selectedRatio, isUnsupportedCodec, dimensions]);
 
   const inputProps: z.infer<typeof CompositionProps> = useMemo(() => {
     return {
       title: "Speech Based Editor",
       videoSrc,
       transcription,
+      deletedWordIds: Array.from(deletedWordIds),
     };
-  }, [videoSrc, transcription]);
+  }, [videoSrc, transcription, deletedWordIds]);
 
   const ratioOptions = [
     { label: "Original", value: "original" },
@@ -210,7 +320,6 @@ const EditorPage: React.FC = () => {
             Back to Home
           </Link>
         </header>
-
         <main className="flex-1 flex items-center justify-center p-8">
           <div className="w-full max-w-xl">
             <VideoUploader onUpload={onUpload} />
@@ -222,7 +331,6 @@ const EditorPage: React.FC = () => {
 
   return (
     <div className="h-screen flex flex-col bg-[#011626] text-[#f1f2f3] overflow-hidden font-sans">
-      {/* Header */}
       <header className="h-12 border-b border-[#1d417c] bg-[#022540] flex items-center justify-between px-4 shrink-0 z-50">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
@@ -266,11 +374,8 @@ const EditorPage: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Workspace */}
       <main className="flex-1 flex overflow-hidden">
-        {/* Left: Video Viewport */}
         <section className="w-3/5 border-r border-[#1d417c] flex flex-col bg-black/20 relative">
-          {/* Warning Overlay */}
           {isUnsupportedCodec && (
             <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-10 text-center">
               <div className="max-w-xs">
@@ -294,9 +399,7 @@ const EditorPage: React.FC = () => {
                   Unsupported Video Track
                 </h3>
                 <p className="text-sm text-gray-400 mb-6">
-                  Your browser can hear the audio but cannot decode the video
-                  track. This usually means the video uses the{" "}
-                  <b className="text-white">HEVC (H.265)</b> codec.
+                  Your browser cannot decode HEVC (H.265).
                 </p>
                 <Button
                   variant="secondary"
@@ -315,40 +418,30 @@ const EditorPage: React.FC = () => {
               ref={playerRef}
               component={Main}
               inputProps={inputProps}
-              durationInFrames={durationInFrames}
+              durationInFrames={editedDurationInFrames}
               fps={VIDEO_FPS}
               compositionHeight={dimensions.height}
               compositionWidth={dimensions.width}
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "contain",
-              }}
+              style={{ width: "100%", height: "100%", objectFit: "contain" }}
               controls={false}
               autoPlay={false}
               loop={false}
             />
-            <div className="absolute top-4 left-4 text-xs font-mono bg-black/60 px-2 py-1 rounded text-[#9cb2d7]">
-              {dimensions.width}p {VIDEO_FPS}fps
-            </div>
           </div>
 
-          {/* Video Controls */}
-          <div className="h-20 bg-[#022540] border-t border-[#1d417c] flex flex-col justify-center px-6 shrink-0 gap-3">
-            {/* Seekbar */}
+          <div className="h-20 bg-[#022540] border-t border-[#1d417c] flex flex-col justify-center px-6 shrink-0 gap-2">
             <div className="w-full flex items-center gap-3">
-              <span className="text-xs font-mono text-[#9cb2d7] w-20 text-right shrink-0">
-                {String(Math.floor(currentFrame / 3600)).padStart(2, "0")}:
-                {String(Math.floor((currentFrame % 3600) / 60)).padStart(
+              <span className="text-[10px] font-mono text-[#9cb2d7]/50 w-12 text-right">
+                {Math.floor(currentFrame / VIDEO_FPS / 60)}:
+                {String(Math.floor((currentFrame / VIDEO_FPS) % 60)).padStart(
                   2,
                   "0",
                 )}
-                :{String(Math.floor(currentFrame % 60)).padStart(2, "0")}
               </span>
               <input
                 type="range"
                 min={0}
-                max={durationInFrames}
+                max={editedDurationInFrames}
                 value={currentFrame}
                 onChange={(e) => {
                   const frame = parseInt(e.target.value, 10);
@@ -357,18 +450,61 @@ const EditorPage: React.FC = () => {
                 }}
                 className="flex-1 h-1 bg-[#1d417c] rounded-full appearance-none cursor-pointer accent-[#7ead70]"
               />
-              <span className="text-xs font-mono text-[#9cb2d7] w-20 shrink-0">
-                {String(Math.floor(durationInFrames / 3600)).padStart(2, "0")}:
-                {String(Math.floor((durationInFrames % 3600) / 60)).padStart(
-                  2,
-                  "0",
-                )}
-                :{String(Math.floor(durationInFrames % 60)).padStart(2, "0")}
+              <span className="text-[10px] font-mono text-[#9cb2d7]/50 w-12 text-right">
+                {Math.floor(editedDurationInFrames / VIDEO_FPS / 60)}:
+                {String(
+                  Math.floor((editedDurationInFrames / VIDEO_FPS) % 60),
+                ).padStart(2, "0")}
               </span>
             </div>
 
-            {/* Playback Controls */}
-            <div className="flex items-center justify-center gap-6">
+            <div className="flex items-center justify-center gap-6 relative">
+              <div className="absolute left-0 flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={undo}
+                  disabled={!canUndo}
+                  className="p-1 h-auto text-[#9cb2d7] disabled:opacity-20"
+                  title="Undo (Ctrl+Z)"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      d="M3 10h10a8 8 0 018 8v2M3 10l5 5m-5-5l5-5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                    ></path>
+                  </svg>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={redo}
+                  disabled={!canRedo}
+                  className="p-1 h-auto text-[#9cb2d7] disabled:opacity-20"
+                  title="Redo (Ctrl+Y)"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      d="M21 10H11a8 8 0 00-8 8v2m18-10l-5 5m5-5l-5-5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                    ></path>
+                  </svg>
+                </Button>
+              </div>
               <button
                 className="text-[#9cb2d7] hover:text-[#f1f2f3] transition-colors"
                 onClick={() =>
@@ -386,14 +522,12 @@ const EditorPage: React.FC = () => {
                 </svg>
               </button>
               <button
-                className="w-12 h-12 bg-[#1d417c] hover:bg-[#9cb2d7] hover:text-[#011626] rounded-full flex items-center justify-center text-[#f1f2f3] transition-all"
-                onClick={() => {
-                  if (playerRef.current?.isPlaying()) {
-                    playerRef.current?.pause();
-                  } else {
-                    playerRef.current?.play();
-                  }
-                }}
+                className="w-10 h-10 bg-[#1d417c] hover:bg-[#9cb2d7] hover:text-[#011626] rounded-full flex items-center justify-center text-[#f1f2f3] transition-all"
+                onClick={() =>
+                  playerRef.current?.isPlaying()
+                    ? playerRef.current?.pause()
+                    : playerRef.current?.play()
+                }
               >
                 <svg
                   className="w-6 h-6"
@@ -407,7 +541,10 @@ const EditorPage: React.FC = () => {
                 className="text-[#9cb2d7] hover:text-[#f1f2f3] transition-colors"
                 onClick={() =>
                   playerRef.current?.seekTo(
-                    Math.min(durationInFrames, currentFrame + 30 * VIDEO_FPS),
+                    Math.min(
+                      editedDurationInFrames,
+                      currentFrame + 30 * VIDEO_FPS,
+                    ),
                   )
                 }
               >
@@ -423,16 +560,33 @@ const EditorPage: React.FC = () => {
           </div>
         </section>
 
-        {/* Right: Text Panel */}
         <section className="w-2/5 flex flex-col bg-[#022540]">
           <TranscriptionView
             transcription={transcription}
-            currentFrame={currentFrame}
-            fps={VIDEO_FPS}
+            currentTime={originalCurrentTime}
             onWordClick={onWordClick}
+            onDeleteWords={(ids) => {
+              onDeleteWords(ids);
+              setSelectedWordIds(new Set());
+            }}
+            onToggleWordDelete={onToggleWordDelete}
+            deletedWordIds={deletedWordIds}
+            selectedWordIds={selectedWordIds}
+            onSelectionChange={setSelectedWordIds}
           />
         </section>
       </main>
+
+      <TimelineEditor
+        transcription={transcription}
+        deletedWordIds={deletedWordIds}
+        currentFrame={currentFrame}
+        fps={VIDEO_FPS}
+        onSeek={(frame) => {
+          playerRef.current?.seekTo(frame);
+          setCurrentFrame(frame);
+        }}
+      />
     </div>
   );
 };

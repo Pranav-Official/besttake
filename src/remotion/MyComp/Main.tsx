@@ -1,85 +1,106 @@
-import { fontFamily, loadFont } from "@remotion/google-fonts/Inter";
-import {
-  AbsoluteFill,
-  Video,
-  Sequence,
-  spring,
-  useCurrentFrame,
-  useVideoConfig,
-} from "remotion";
+import { AbsoluteFill, Video, Series, useVideoConfig } from "remotion";
+import { useMemo } from "react";
 import { z } from "zod";
 import { CompositionProps } from "../../../types/constants";
-import { NextLogo } from "./NextLogo";
-import { Rings } from "./Rings";
-import { TextFade } from "./TextFade";
 
-loadFont("normal", {
-  subsets: ["latin"],
-  weights: ["400", "700"],
-});
+interface Clip {
+  id: string;
+  start: number;
+  end: number;
+  duration: number;
+  timelineStart: number;
+}
 
 export const Main = ({
-  title,
   videoSrc,
-  transcription,
+  transcription = [],
+  deletedWordIds = [],
 }: z.infer<typeof CompositionProps>) => {
-  const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  // const currentTime = frame / fps;
 
-  const transitionStart = 2 * fps;
-  const transitionDuration = 1 * fps;
+  // 1. Calculate non-deleted clips
+  const clips = useMemo(() => {
+    if (!transcription || transcription.length === 0) return [];
 
-  const logoOut = spring({
-    fps,
-    frame,
-    config: {
-      damping: 200,
-    },
-    durationInFrames: transitionDuration,
-    delay: transitionStart,
-  });
+    const deletedSet = new Set(deletedWordIds);
+    const result: Clip[] = [];
+    let currentClip: { start: number; end: number } | null = null;
+    let accumulatedTimelineStart = 0;
 
-  // const activeWord = transcription?.find(
-  //   (word) => currentTime >= word.start && currentTime <= word.end,
-  // );
+    transcription.forEach((word) => {
+      const isDeleted = deletedSet.has(word.id);
+
+      if (!isDeleted) {
+        if (!currentClip) {
+          currentClip = { start: word.start, end: word.end };
+        } else {
+          currentClip.end = word.end;
+        }
+      } else {
+        if (currentClip) {
+          const duration = currentClip.end - currentClip.start;
+          result.push({
+            id: `clip-${result.length}`,
+            start: currentClip.start,
+            end: currentClip.end,
+            duration,
+            timelineStart: accumulatedTimelineStart,
+          });
+          accumulatedTimelineStart += duration;
+          currentClip = null;
+        }
+      }
+    });
+
+    if (currentClip) {
+      const duration = currentClip.end - currentClip.start;
+      result.push({
+        id: `clip-${result.length}`,
+        start: currentClip.start,
+        end: currentClip.end,
+        duration,
+        timelineStart: accumulatedTimelineStart,
+      });
+    }
+
+    return result;
+  }, [transcription, deletedWordIds]);
 
   return (
-    <AbsoluteFill
-      style={{ backgroundColor: videoSrc ? "transparent" : "#011626" }}
-    >
+    <AbsoluteFill style={{ backgroundColor: videoSrc ? "black" : "#011626" }}>
       {videoSrc ? (
-        <AbsoluteFill style={{ backgroundColor: "black" }}>
-          <Video
-            src={videoSrc}
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "contain",
-              backgroundColor: "black",
-            }}
-          />
+        <AbsoluteFill>
+          <Series>
+            {clips.map((clip) => (
+              <Series.Sequence
+                key={`${clip.id}-${clip.start}`}
+                durationInFrames={Math.max(1, Math.ceil(clip.duration * fps))}
+                // PREMOUNTING is key to avoid black frames!
+                premountFor={fps}
+              >
+                <Video
+                  src={videoSrc}
+                  startFrom={Math.floor(clip.start * fps)}
+                  endAt={Math.ceil(clip.end * fps)}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "contain",
+                  }}
+                />
+              </Series.Sequence>
+            ))}
+          </Series>
+
+          {clips.length === 0 && transcription.length > 0 && (
+            <AbsoluteFill className="items-center justify-center bg-[#011626]">
+              <p className="text-[#ef4444] font-bold">All content deleted</p>
+            </AbsoluteFill>
+          )}
         </AbsoluteFill>
       ) : (
-        <AbsoluteFill className="bg-white">
-          <Sequence durationInFrames={transitionStart + transitionDuration}>
-            <Rings outProgress={logoOut}></Rings>
-            <AbsoluteFill className="justify-center items-center">
-              <NextLogo outProgress={logoOut}></NextLogo>
-            </AbsoluteFill>
-          </Sequence>
-          <Sequence from={transitionStart + transitionDuration / 2}>
-            <TextFade>
-              <h1
-                className="text-[70px] font-bold text-black"
-                style={{
-                  fontFamily,
-                }}
-              >
-                {title}
-              </h1>
-            </TextFade>
-          </Sequence>
+        <AbsoluteFill className="items-center justify-center">
+          <p className="text-[#9cb2d7]">No video source</p>
         </AbsoluteFill>
       )}
     </AbsoluteFill>
