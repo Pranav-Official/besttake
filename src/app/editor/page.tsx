@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import {
+  Clip,
   CompositionProps,
   VIDEO_FPS,
   WordTranscription,
@@ -27,49 +28,47 @@ const EditorPage: React.FC = () => {
   const [transcription, setTranscription] = useState<WordTranscription[]>([]);
 
   const {
-    state: deletedWordIds,
-    set: setDeletedWordIds,
+    state: clips,
+    set: setClips,
     undo,
     redo,
     canUndo,
     canRedo,
-  } = useHistory<Set<string>>(new Set());
+  } = useHistory<Clip[]>([]);
 
   const [currentFrame, setCurrentFrame] = useState(0);
+  const lastFrameRef = useRef(0);
+
   const [selectedWordIds, setSelectedWordIds] = useState<Set<string>>(
     new Set(),
   );
 
   const editedDurationInFrames = useMemo(() => {
-    if (transcription.length === 0) return 300;
+    if (clips.length === 0) return 300;
 
     let totalDurationInSeconds = 0;
-    transcription.forEach((word) => {
-      if (!deletedWordIds.has(word.id)) {
-        totalDurationInSeconds += word.end - word.start;
-      }
+    clips.forEach((clip) => {
+      totalDurationInSeconds += clip.sourceEnd - clip.sourceStart;
     });
 
     return Math.max(1, Math.ceil(totalDurationInSeconds * VIDEO_FPS));
-  }, [transcription, deletedWordIds]);
+  }, [clips]);
 
   const originalCurrentTime = useMemo(() => {
-    if (transcription.length === 0) return currentFrame / VIDEO_FPS;
+    if (clips.length === 0) return currentFrame / VIDEO_FPS;
 
     let accumulatedTime = 0;
     const targetEditedTime = currentFrame / VIDEO_FPS;
 
-    for (const word of transcription) {
-      if (!deletedWordIds.has(word.id)) {
-        const duration = word.end - word.start;
-        if (targetEditedTime <= accumulatedTime + duration) {
-          return word.start + (targetEditedTime - accumulatedTime);
-        }
-        accumulatedTime += duration;
+    for (const clip of clips) {
+      const duration = clip.sourceEnd - clip.sourceStart;
+      if (targetEditedTime <= accumulatedTime + duration) {
+        return clip.sourceStart + (targetEditedTime - accumulatedTime);
       }
+      accumulatedTime += duration;
     }
     return accumulatedTime;
-  }, [currentFrame, transcription, deletedWordIds]);
+  }, [currentFrame, clips]);
 
   // Dynamic Video Metadata
   const [nativeDimensions, setNativeDimensions] = useState({
@@ -159,30 +158,45 @@ const EditorPage: React.FC = () => {
         setTranscription(
           generateMockTranscription(metadata.durationInSeconds ?? 20),
         );
-        setDeletedWordIds(new Set());
+        setClips([
+          {
+            id: "initial-clip",
+            sourceStart: 0,
+            sourceEnd: metadata.durationInSeconds ?? 20,
+          },
+        ]);
       } catch (err) {
         console.error("Critical error loading video metadata:", err);
         setNativeDimensions({ width: 1280, height: 720 });
         setVideoSrc(src);
         setTranscription(generateMockTranscription(20));
-        setDeletedWordIds(new Set());
+        setClips([
+          {
+            id: "initial-clip",
+            sourceStart: 0,
+            sourceEnd: 20,
+          },
+        ]);
       }
     },
-    [videoSrc, setDeletedWordIds],
+    [videoSrc, setClips],
   );
 
   const getEditedTime = useCallback(
     (originalStartTime: number) => {
       let accumulatedEditedTime = 0;
-      for (const word of transcription) {
-        if (word.start >= originalStartTime) return accumulatedEditedTime;
-        if (!deletedWordIds.has(word.id)) {
-          accumulatedEditedTime += word.end - word.start;
+      for (const clip of clips) {
+        if (
+          originalStartTime >= clip.sourceStart &&
+          originalStartTime <= clip.sourceEnd
+        ) {
+          return accumulatedEditedTime + (originalStartTime - clip.sourceStart);
         }
+        accumulatedEditedTime += clip.sourceEnd - clip.sourceStart;
       }
       return accumulatedEditedTime;
     },
-    [transcription, deletedWordIds],
+    [clips],
   );
 
   const onWordClick = useCallback(
@@ -192,32 +206,97 @@ const EditorPage: React.FC = () => {
         const frame = Math.floor(editedTime * VIDEO_FPS);
         playerRef.current.seekTo(frame);
         setCurrentFrame(frame);
+        lastFrameRef.current = frame;
       }
     },
     [getEditedTime],
   );
 
-  const onToggleWordDelete = useCallback(
-    (wordId: string) => {
-      setDeletedWordIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(wordId)) next.delete(wordId);
-        else next.add(wordId);
-        return next;
-      });
-    },
-    [setDeletedWordIds],
-  );
-
   const onDeleteWords = useCallback(
     (wordIds: string[]) => {
-      setDeletedWordIds((prev) => {
-        const next = new Set(prev);
-        wordIds.forEach((id) => next.add(id));
-        return next;
+      const wordsToCutIds = new Set(wordIds);
+      const wordToIndex = new Map(transcription.map((w, i) => [w.id, i]));
+
+      setClips((prev) => {
+        const nextClips: Clip[] = [];
+
+        prev.forEach((clip) => {
+          // Identify all words from the original transcript that are within this clip
+          const wordsInClip = transcription.filter(
+            (w) => w.start >= clip.sourceStart && w.end <= clip.sourceEnd,
+          );
+
+          // Keep only those that aren't being deleted
+          const remainingWords = wordsInClip.filter(
+            (w) => !wordsToCutIds.has(w.id),
+          );
+
+          if (remainingWords.length === 0) return;
+
+          let currentSegment: WordTranscription[] = [];
+
+          remainingWords.forEach((word) => {
+            const originalIndex = wordToIndex.get(word.id)!;
+            const lastOriginalIndex =
+              currentSegment.length > 0
+                ? wordToIndex.get(currentSegment[currentSegment.length - 1].id)!
+                : -1;
+
+            // If contiguous in the original transcript, group them
+            if (
+              currentSegment.length > 0 &&
+              originalIndex === lastOriginalIndex + 1
+            ) {
+              currentSegment.push(word);
+            } else {
+              // Finish previous segment and start new one
+              if (currentSegment.length > 0) {
+                nextClips.push({
+                  id: `${clip.id}-${nextClips.length}`,
+                  sourceStart: currentSegment[0].start,
+                  sourceEnd: currentSegment[currentSegment.length - 1].end,
+                });
+              }
+              currentSegment = [word];
+            }
+          });
+
+          // Final segment
+          if (currentSegment.length > 0) {
+            nextClips.push({
+              id: `${clip.id}-${nextClips.length}`,
+              sourceStart: currentSegment[0].start,
+              sourceEnd: currentSegment[currentSegment.length - 1].end,
+            });
+          }
+        });
+
+        return nextClips;
       });
     },
-    [setDeletedWordIds],
+    [transcription, setClips],
+  );
+
+  const deletedWordIds = useMemo(() => {
+    const ids = new Set<string>();
+    transcription.forEach((word) => {
+      const isCovered = clips.some(
+        (clip) => word.start < clip.sourceEnd && word.end > clip.sourceStart,
+      );
+      if (!isCovered) ids.add(word.id);
+    });
+    return ids;
+  }, [transcription, clips]);
+
+  const onToggleWordDelete = useCallback(
+    (wordId: string) => {
+      const isDeleted = deletedWordIds.has(wordId);
+      if (isDeleted) {
+        return;
+      }
+      onDeleteWords([wordId]);
+    },
+    [deletedWordIds, onDeleteWords],
   );
 
   useEffect(() => {
@@ -256,10 +335,67 @@ const EditorPage: React.FC = () => {
         setSelectedWordIds(new Set());
         return;
       }
+      // 4. Timeline Navigation (Arrows)
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        if (["INPUT", "TEXTAREA"].includes((e.target as HTMLElement).tagName)) {
+          return;
+        }
+        e.preventDefault();
+        if (playerRef.current) {
+          const step = e.shiftKey ? VIDEO_FPS : 1;
+          const current = playerRef.current.getCurrentFrame();
+          const nextFrame =
+            e.key === "ArrowLeft"
+              ? Math.max(0, current - step)
+              : Math.min(editedDurationInFrames, current + step);
+
+          playerRef.current.seekTo(nextFrame);
+          setCurrentFrame(nextFrame);
+          lastFrameRef.current = nextFrame;
+        }
+        return;
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [undo, redo, selectedWordIds, onDeleteWords]);
+  }, [undo, redo, selectedWordIds, onDeleteWords, editedDurationInFrames]);
+
+  const onSplitClip = useCallback(
+    (wordId: string) => {
+      const word = transcription.find((w) => w.id === wordId);
+      if (!word) return;
+
+      const clipIndex = clips.findIndex(
+        (c) => word.start >= c.sourceStart && word.end <= c.sourceEnd,
+      );
+      if (clipIndex === -1) return;
+
+      setClips((prev) => {
+        const nextClips = [...prev];
+        const clip = nextClips[clipIndex];
+
+        const leftClip: Clip = {
+          id: `${clip.id}-s1`,
+          sourceStart: clip.sourceStart,
+          sourceEnd: word.end,
+        };
+        const rightClip: Clip = {
+          id: `${clip.id}-s2`,
+          sourceStart: word.end,
+          sourceEnd: clip.sourceEnd,
+        };
+
+        if (word.end === clip.sourceEnd) {
+          // No split needed at end
+          return prev;
+        }
+
+        nextClips.splice(clipIndex, 1, leftClip, rightClip);
+        return nextClips;
+      });
+    },
+    [transcription, clips, setClips],
+  );
 
   const dimensions = useMemo(() => {
     const baseHeight = 720;
@@ -291,7 +427,21 @@ const EditorPage: React.FC = () => {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const onFrameUpdate = (e: any) => {
-      setCurrentFrame(e.detail.frame);
+      const newFrame = e.detail.frame;
+      const isPlaying = playerRef.current?.isPlaying();
+
+      if (isPlaying) {
+        // Throttle updates during playback: only update every 3 frames (~10 times per second)
+        // to avoid React's synchronous render limit at clip boundaries.
+        if (Math.abs(newFrame - lastFrameRef.current) >= 3) {
+          setCurrentFrame(newFrame);
+          lastFrameRef.current = newFrame;
+        }
+      } else {
+        // Full responsiveness when paused or seeking manually
+        setCurrentFrame(newFrame);
+        lastFrameRef.current = newFrame;
+      }
     };
 
     player.addEventListener("frameupdate", onFrameUpdate);
@@ -303,9 +453,9 @@ const EditorPage: React.FC = () => {
       title: "Speech Based Editor",
       videoSrc,
       transcription,
-      deletedWordIds: Array.from(deletedWordIds),
+      clips,
     };
-  }, [videoSrc, transcription, deletedWordIds]);
+  }, [videoSrc, transcription, clips]);
 
   const ratioOptions = [
     { label: "Original", value: "original" },
@@ -467,6 +617,7 @@ const EditorPage: React.FC = () => {
                   const frame = parseInt(e.target.value, 10);
                   playerRef.current?.seekTo(frame);
                   setCurrentFrame(frame);
+                  lastFrameRef.current = frame;
                 }}
                 className="flex-1 h-1 bg-[#1d417c] rounded-full appearance-none cursor-pointer accent-[#7ead70]"
               />
@@ -583,6 +734,7 @@ const EditorPage: React.FC = () => {
         <section className="w-2/5 flex flex-col bg-[#022540]">
           <TranscriptionView
             transcription={transcription}
+            clips={clips}
             currentTime={originalCurrentTime}
             onWordClick={onWordClick}
             onDeleteWords={(ids) => {
@@ -590,6 +742,7 @@ const EditorPage: React.FC = () => {
               setSelectedWordIds(new Set());
             }}
             onToggleWordDelete={onToggleWordDelete}
+            onSplitClip={onSplitClip}
             deletedWordIds={deletedWordIds}
             selectedWordIds={selectedWordIds}
             onSelectionChange={setSelectedWordIds}
@@ -599,12 +752,14 @@ const EditorPage: React.FC = () => {
 
       <TimelineEditor
         transcription={transcription}
-        deletedWordIds={deletedWordIds}
+        clips={clips}
+        onClipsChange={setClips}
         currentFrame={currentFrame}
         fps={VIDEO_FPS}
         onSeek={(frame) => {
           playerRef.current?.seekTo(frame);
           setCurrentFrame(frame);
+          lastFrameRef.current = frame;
         }}
       />
     </div>

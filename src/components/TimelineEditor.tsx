@@ -1,28 +1,21 @@
 import React, { useMemo, useRef, useEffect, useState } from "react";
-import { WordTranscription } from "../../types/constants";
+import { WordTranscription, Clip } from "../../types/constants";
 import { cn } from "../lib/utils";
 
 interface TimelineEditorProps {
   transcription: WordTranscription[];
-  deletedWordIds: Set<string>;
+  clips: Clip[];
+  onClipsChange: (clips: Clip[]) => void;
   currentFrame: number;
   onSeek: (frame: number) => void;
   fps: number;
   className?: string;
 }
 
-interface Clip {
-  id: string;
-  start: number;
-  end: number;
-  duration: number;
-  timelineStart: number;
-  textPreview: string;
-}
-
 export const TimelineEditor: React.FC<TimelineEditorProps> = ({
   transcription,
-  deletedWordIds,
+  clips,
+  onClipsChange,
   currentFrame,
   onSeek,
   fps,
@@ -32,65 +25,33 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
 
-  const clips = useMemo(() => {
-    if (!transcription || transcription.length === 0) return [];
-
-    const result: Clip[] = [];
-    let currentClip: { start: number; end: number; words: string[] } | null =
-      null;
+  const processedClips = useMemo(() => {
     let accumulatedTimelineStart = 0;
+    return clips.map((clip) => {
+      const duration = clip.sourceEnd - clip.sourceStart;
+      const timelineStart = accumulatedTimelineStart;
+      accumulatedTimelineStart += duration;
 
-    transcription.forEach((word) => {
-      const isDeleted = deletedWordIds.has(word.id);
+      // Find text preview
+      const wordsInClip = transcription.filter(
+        (w) => w.start >= clip.sourceStart && w.end <= clip.sourceEnd,
+      );
+      const textPreview =
+        wordsInClip
+          .slice(0, 5)
+          .map((w) => w.text)
+          .join(" ") + (wordsInClip.length > 5 ? "..." : "");
 
-      if (!isDeleted) {
-        if (!currentClip) {
-          currentClip = {
-            start: word.start,
-            end: word.end,
-            words: [word.text],
-          };
-        } else {
-          currentClip.end = word.end;
-          if (currentClip.words.length < 5) currentClip.words.push(word.text);
-        }
-      } else {
-        if (currentClip) {
-          const duration = currentClip.end - currentClip.start;
-          result.push({
-            id: `clip-${result.length}`,
-            start: currentClip.start,
-            end: currentClip.end,
-            duration,
-            timelineStart: accumulatedTimelineStart,
-            textPreview:
-              currentClip.words.join(" ") +
-              (currentClip.words.length >= 5 ? "..." : ""),
-          });
-          accumulatedTimelineStart += duration;
-          currentClip = null;
-        }
-      }
-    });
-
-    if (currentClip) {
-      const duration = currentClip.end - currentClip.start;
-      result.push({
-        id: `clip-${result.length}`,
-        start: currentClip.start,
-        end: currentClip.end,
+      return {
+        ...clip,
         duration,
-        timelineStart: accumulatedTimelineStart,
-        textPreview:
-          currentClip.words.join(" ") +
-          (currentClip.words.length >= 5 ? "..." : ""),
-      });
-    }
+        timelineStart,
+        textPreview,
+      };
+    });
+  }, [transcription, clips]);
 
-    return result;
-  }, [transcription, deletedWordIds]);
-
-  const totalEditedDuration = clips.reduce(
+  const totalEditedDuration = processedClips.reduce(
     (acc, clip) => acc + clip.duration,
     0,
   );
@@ -132,6 +93,21 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
     onSeek(Math.floor(time * fps));
   };
 
+  const moveClip = (index: number, direction: "left" | "right") => {
+    const nextIndex = direction === "left" ? index - 1 : index + 1;
+    if (nextIndex < 0 || nextIndex >= clips.length) return;
+
+    const newClips = [...clips];
+    const temp = newClips[index];
+    newClips[index] = newClips[nextIndex];
+    newClips[nextIndex] = temp;
+    onClipsChange(newClips);
+  };
+
+  const deleteClip = (index: number) => {
+    onClipsChange(clips.filter((_, i) => i !== index));
+  };
+
   const renderRuler = () => {
     const markers = [];
     const step = zoom < 20 ? 10 : zoom < 50 ? 5 : 1;
@@ -143,7 +119,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
           style={{ left: i * zoom }}
         >
           <span className="text-[10px] text-[#9cb2d7]/40 ml-1">
-            {Math.floor(i / 60)}:{String(i % 60).padStart(2, "0")}
+            {Math.floor(i / 60)}:{String(Math.floor(i % 60)).padStart(2, "0")}
           </span>
         </div>,
       );
@@ -163,7 +139,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-[10px] font-bold text-[#9cb2d7]/80 uppercase tracking-wider">
             <span className="w-2 h-2 rounded-full bg-[#9cb2d7]"></span>
-            Video 1
+            Video 1 ({clips.length} clips)
           </div>
         </div>
 
@@ -235,7 +211,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
 
             {/* Video Track */}
             <div className="flex-1 relative bg-[#011626]/20">
-              {clips.map((clip) => (
+              {processedClips.map((clip, index) => (
                 <div
                   key={`video-${clip.id}`}
                   className="absolute top-2 bottom-2 bg-[#1d417c]/40 border border-[#9cb2d7]/30 rounded-lg overflow-hidden flex flex-col group hover:border-[#9cb2d7]/60 transition-all shadow-[0_4px_10px_rgba(0,0,0,0.3)] backdrop-blur-sm"
@@ -243,11 +219,52 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                     left: clip.timelineStart * zoom,
                     width: Math.max(2, clip.duration * zoom - 2),
                   }}
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="flex-1 p-2 flex items-center overflow-hidden">
-                    <p className="text-[10px] font-medium text-[#f1f2f3] leading-tight line-clamp-2">
+                  <div className="flex-1 p-2 flex flex-col items-start overflow-hidden">
+                    <p className="text-[10px] font-medium text-[#f1f2f3] leading-tight line-clamp-1 mb-1">
                       "{clip.textPreview}"
                     </p>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => moveClip(index, "left")}
+                        disabled={index === 0}
+                        className="bg-black/40 p-1 rounded hover:bg-black/60 disabled:opacity-20"
+                      >
+                        <svg
+                          className="w-3 h-3"
+                          viewBox="0 0 24 24"
+                          fill="white"
+                        >
+                          <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => moveClip(index, "right")}
+                        disabled={index === clips.length - 1}
+                        className="bg-black/40 p-1 rounded hover:bg-black/60 disabled:opacity-20"
+                      >
+                        <svg
+                          className="w-3 h-3"
+                          viewBox="0 0 24 24"
+                          fill="white"
+                        >
+                          <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => deleteClip(index)}
+                        className="bg-red/40 p-1 rounded hover:bg-red/60"
+                      >
+                        <svg
+                          className="w-3 h-3"
+                          viewBox="0 0 24 24"
+                          fill="white"
+                        >
+                          <path d="M19 13H5v-2h14v2z" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                   <div className="h-1 bg-[#9cb2d7]/20 w-full shrink-0" />
                 </div>

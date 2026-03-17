@@ -1,14 +1,16 @@
 import React, { useMemo, useRef, useEffect, useState } from "react";
-import { WordTranscription } from "../../types/constants";
+import { WordTranscription, Clip } from "../../types/constants";
 import { cn } from "../lib/utils";
 import { Badge } from "./Badge";
 
 interface TranscriptionViewProps {
   transcription: WordTranscription[];
+  clips: Clip[];
   currentTime: number;
   onWordClick?: (start: number) => void;
   onDeleteWords?: (wordIds: string[]) => void;
   onToggleWordDelete?: (wordId: string) => void;
+  onSplitClip?: (wordId: string) => void;
   deletedWordIds: Set<string>;
   selectedWordIds: Set<string>;
   onSelectionChange: (ids: Set<string>) => void;
@@ -17,10 +19,12 @@ interface TranscriptionViewProps {
 
 export const TranscriptionView: React.FC<TranscriptionViewProps> = ({
   transcription,
+  clips,
   currentTime,
   onWordClick,
   onDeleteWords,
   onToggleWordDelete,
+  onSplitClip,
   deletedWordIds,
   selectedWordIds,
   onSelectionChange,
@@ -36,11 +40,46 @@ export const TranscriptionView: React.FC<TranscriptionViewProps> = ({
     y: number;
   } | null>(null);
 
+  // Derived: Rendered words in the order of clips
+  const renderedItems = useMemo(() => {
+    const items: {
+      word: WordTranscription;
+      clipId: string;
+      uniqueId: string;
+    }[] = [];
+
+    clips.forEach((clip) => {
+      const wordsInClip = transcription.filter(
+        (w) => w.start >= clip.sourceStart && w.end <= clip.sourceEnd,
+      );
+      wordsInClip.forEach((word) => {
+        items.push({
+          word,
+          clipId: clip.id,
+          uniqueId: `${clip.id}-${word.id}`,
+        });
+      });
+    });
+
+    return items;
+  }, [transcription, clips]);
+
   const activeWordIndex = useMemo(() => {
-    return transcription.findIndex(
-      (word) => currentTime >= word.start && currentTime <= word.end,
-    );
-  }, [transcription, currentTime]);
+    for (let i = 0; i < renderedItems.length; i++) {
+      const item = renderedItems[i];
+      if (currentTime >= item.word.start && currentTime <= item.word.end) {
+        return i;
+      }
+    }
+    return -1;
+  }, [renderedItems, currentTime]);
+
+  const handleKeyDown = (e: React.KeyboardEvent, wordId: string) => {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      onSplitClip?.(wordId);
+    }
+  };
 
   const getWordRange = (startId: string, endId: string) => {
     const startIndex = transcription.findIndex((w) => w.id === startId);
@@ -55,9 +94,11 @@ export const TranscriptionView: React.FC<TranscriptionViewProps> = ({
   const handleMouseDown = (id: string, shiftKey: boolean) => {
     setMenuPosition(null);
     if (shiftKey && selectedWordIds.size > 0) {
-      const lastSelectedId = Array.from(selectedWordIds).pop()!;
+      const lastSelectedId = Array.from(selectedWordIds.values()).pop()!;
       const range = getWordRange(lastSelectedId, id);
-      onSelectionChange(new Set([...selectedWordIds, ...range]));
+      const combined = new Set(Array.from(selectedWordIds.values()));
+      range.forEach((rid) => combined.add(rid));
+      onSelectionChange(combined);
     } else {
       onSelectionChange(new Set([id]));
       setIsDragging(true);
@@ -148,62 +189,65 @@ export const TranscriptionView: React.FC<TranscriptionViewProps> = ({
         onMouseUp={handleMouseUp}
       >
         <div className="text-xl leading-[1.8] tracking-tight">
-          {transcription.length === 0 ? (
+          {renderedItems.length === 0 ? (
             <div className="w-full h-full flex flex-col items-center justify-center py-20 text-center opacity-30 italic">
-              <p>Waiting for video upload...</p>
+              <p>No text in timeline.</p>
             </div>
           ) : (
-            transcription.map((word, index) => {
+            renderedItems.map(({ word, clipId, uniqueId }, index) => {
               const isActive = index === activeWordIndex;
-              const isPlayed = currentTime > word.end;
-              const isDeleted = deletedWordIds.has(word.id);
               const isSelected = selectedWordIds.has(word.id);
 
+              // Find if this is the end of a clip
+              const isEndOfClip =
+                index < renderedItems.length - 1 &&
+                renderedItems[index + 1].clipId !== clipId;
+
               return (
-                <span
-                  key={`${word.id}-${index}`}
-                  ref={isActive ? activeWordRef : null}
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                    handleMouseDown(word.id, e.shiftKey);
-                  }}
-                  onMouseEnter={() => handleMouseEnter(word.id)}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!e.shiftKey && !isDragging) {
-                      if (e.altKey || e.metaKey || e.ctrlKey) {
-                        onToggleWordDelete?.(word.id);
-                      } else {
-                        onWordClick?.(word.start);
+                <span key={uniqueId}>
+                  <span
+                    ref={isActive ? activeWordRef : null}
+                    tabIndex={0}
+                    onKeyDown={(e) => handleKeyDown(e, word.id)}
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      handleMouseDown(word.id, e.shiftKey);
+                    }}
+                    onMouseEnter={() => handleMouseEnter(word.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!e.shiftKey && !isDragging) {
+                        if (e.altKey || e.metaKey || e.ctrlKey) {
+                          onToggleWordDelete?.(word.id);
+                        } else {
+                          onWordClick?.(word.start);
+                        }
                       }
-                    }
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    onToggleWordDelete?.(word.id);
-                  }}
-                  className={cn(
-                    "relative cursor-pointer select-none transition-all duration-200 px-1 py-0.5 mx-[1px] my-[2px] rounded-md inline-block group",
-                    isDeleted
-                      ? "text-[#ef4444] line-through opacity-40 hover:opacity-100"
-                      : isSelected
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      onToggleWordDelete?.(word.id);
+                    }}
+                    className={cn(
+                      "relative cursor-pointer select-none transition-all duration-200 px-1 py-0.5 mx-[1px] my-[2px] rounded-md inline-block group",
+                      isSelected
                         ? "bg-[#9cb2d7]/30 text-[#f1f2f3] ring-1 ring-[#9cb2d7]/50"
                         : isActive
                           ? "bg-[#9cb2d7] text-[#011626] font-black scale-105 shadow-[0_0_20px_rgba(156,178,215,0.4)] z-10"
-                          : isPlayed
-                            ? "text-[#f1f2f3] font-medium opacity-100"
-                            : "text-[#f1f2f3]/30 font-normal hover:text-[#f1f2f3] hover:bg-white/5",
-                  )}
-                  title={
-                    isDeleted
-                      ? "Deleted - Right click to restore"
-                      : `${word.start.toFixed(2)}s - ${word.end.toFixed(2)}s (Right click to delete)`
-                  }
-                >
-                  {word.text}
-                  {/* Optional: Add a small delete indicator on hover */}
-                  {!isDeleted && !isSelected && (
-                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-[#ef4444] rounded-full scale-0 group-hover:scale-100 transition-transform duration-200" />
+                          : "text-[#f1f2f3] font-medium opacity-100",
+                    )}
+                    title={`${word.start.toFixed(2)}s - ${word.end.toFixed(2)}s (Clip: ${clipId})`}
+                  >
+                    {word.text}
+                    {!isSelected && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-[#ef4444] rounded-full scale-0 group-hover:scale-100 transition-transform duration-200" />
+                    )}
+                  </span>
+                  {isEndOfClip && (
+                    <span
+                      className="inline-block w-4 h-[1px] bg-[#1d417c] mx-2 align-middle opacity-50"
+                      title="Clip Break"
+                    />
                   )}
                 </span>
               );
@@ -221,7 +265,7 @@ export const TranscriptionView: React.FC<TranscriptionViewProps> = ({
             <button
               className="w-full px-4 py-2 text-left text-xs font-bold hover:bg-[#ef4444] hover:text-white transition-colors flex items-center gap-2"
               onClick={() => {
-                onDeleteWords?.(Array.from(selectedWordIds));
+                onDeleteWords?.(Array.from(selectedWordIds.values()));
                 setMenuPosition(null);
               }}
             >

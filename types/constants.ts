@@ -9,14 +9,21 @@ export const WordTranscriptionSchema = z.object({
   end: z.number(), // in seconds
 });
 
+export const ClipSchema = z.object({
+  id: z.string(),
+  sourceStart: z.number(), // in seconds
+  sourceEnd: z.number(), // in seconds
+});
+
 export const CompositionProps = z.object({
   title: z.string(),
   videoSrc: z.string().optional(),
   transcription: z.array(WordTranscriptionSchema).optional(),
-  deletedWordIds: z.array(z.string()).optional(),
+  clips: z.array(ClipSchema).optional(),
 });
 
 export type WordTranscription = z.infer<typeof WordTranscriptionSchema>;
+export type Clip = z.infer<typeof ClipSchema>;
 export type TCompositionProps = z.infer<typeof CompositionProps>;
 
 export const defaultMyCompProps: TCompositionProps = {

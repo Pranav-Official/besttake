@@ -17,7 +17,8 @@ export function useHistory<T>(initialState: T, capacity: number = 20) {
         const isEqual = (a: unknown, b: unknown) => {
           if (a instanceof Set && b instanceof Set) {
             if (a.size !== b.size) return false;
-            for (const item of a) if (!b.has(item)) return false;
+            const aValues = Array.from(a.values());
+            for (const item of aValues) if (!b.has(item)) return false;
             return true;
           }
           return JSON.stringify(a) === JSON.stringify(b);
