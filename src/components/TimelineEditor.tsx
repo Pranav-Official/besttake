@@ -9,6 +9,10 @@ interface TimelineEditorProps {
   currentFrame: number;
   onSeek: (frame: number) => void;
   fps: number;
+  paddingEnabled: boolean;
+  onPaddingEnabledChange: (enabled: boolean) => void;
+  paddingDuration: number;
+  onPaddingDurationChange: (duration: number) => void;
   className?: string;
 }
 
@@ -19,6 +23,10 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
   currentFrame,
   onSeek,
   fps,
+  paddingEnabled,
+  onPaddingEnabledChange,
+  paddingDuration,
+  onPaddingDurationChange,
   className,
 }) => {
   const [zoom, setZoom] = useState(50); // pixels per second
@@ -144,6 +152,79 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Clip Padding Tool */}
+          <div
+            className="flex items-center bg-[#011626]/40 rounded-md border border-[#1d417c] p-0.5"
+            title="Clip Padding"
+          >
+            <button
+              onClick={() => onPaddingEnabledChange(!paddingEnabled)}
+              className={cn(
+                "w-6 h-6 rounded flex items-center justify-center transition-all",
+                paddingEnabled
+                  ? "bg-[#9cb2d7] text-[#011626]"
+                  : "text-[#9cb2d7]/40 hover:text-[#9cb2d7]",
+              )}
+            >
+              <svg
+                className="w-3.5 h-3.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2.5"
+                  d="M8 7h8M8 12h8m-8 5h8"
+                />
+              </svg>
+            </button>
+            <div className="flex items-center ml-1 pr-1 border-l border-[#1d417c]">
+              <input
+                type="number"
+                min="0.1"
+                max="0.9"
+                step="0.1"
+                value={paddingDuration}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  if (!isNaN(val)) {
+                    onPaddingDurationChange(
+                      Number(Math.max(0.1, Math.min(0.9, val)).toFixed(1)),
+                    );
+                  }
+                }}
+                className="w-10 bg-transparent text-[10px] font-bold text-center text-[#9cb2d7] focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              <div className="flex flex-col gap-0.5">
+                <button
+                  onClick={() =>
+                    onPaddingDurationChange(
+                      Number(Math.min(0.9, paddingDuration + 0.1).toFixed(1)),
+                    )
+                  }
+                  className="text-[#9cb2d7]/40 hover:text-white leading-none text-[8px]"
+                >
+                  ▲
+                </button>
+                <button
+                  onClick={() =>
+                    onPaddingDurationChange(
+                      Number(Math.max(0.1, paddingDuration - 0.1).toFixed(1)),
+                    )
+                  }
+                  className="text-[#9cb2d7]/40 hover:text-white leading-none text-[8px]"
+                >
+                  ▼
+                </button>
+              </div>
+              <span className="text-[8px] text-[#9cb2d7]/40 font-bold ml-0.5">
+                S
+              </span>
+            </div>
+          </div>
+
           <button className="text-[#9cb2d7]/50 hover:text-white transition-colors">
             <svg
               className="w-4 h-4"

@@ -47,6 +47,10 @@ const EditorPage: React.FC = () => {
     new Set(),
   );
 
+  // Cutting Padding State
+  const [paddingEnabled, setPaddingEnabled] = useState(true);
+  const [paddingDuration, setPaddingDuration] = useState(0.5);
+
   const [isRendering, setIsRendering] = useState(false);
   const [renderProgress, setRenderProgress] = useState(0);
   const [renderStatus, setRenderStatus] = useState("");
@@ -388,10 +392,18 @@ const EditorPage: React.FC = () => {
             } else {
               // Finish previous segment and start new one
               if (currentSegment.length > 0) {
+                const finalPadding = paddingEnabled ? paddingDuration : 0;
                 nextClips.push({
                   id: `${clip.id}-${nextClips.length}`,
-                  sourceStart: currentSegment[0].start,
-                  sourceEnd: currentSegment[currentSegment.length - 1].end,
+                  sourceStart: Math.max(
+                    0,
+                    currentSegment[0].start - finalPadding,
+                  ),
+                  sourceEnd: Math.min(
+                    transcription[transcription.length - 1]?.end || 10000,
+                    currentSegment[currentSegment.length - 1].end +
+                      finalPadding,
+                  ),
                 });
               }
               currentSegment = [word];
@@ -400,10 +412,14 @@ const EditorPage: React.FC = () => {
 
           // Final segment
           if (currentSegment.length > 0) {
+            const finalPadding = paddingEnabled ? paddingDuration : 0;
             nextClips.push({
               id: `${clip.id}-${nextClips.length}`,
-              sourceStart: currentSegment[0].start,
-              sourceEnd: currentSegment[currentSegment.length - 1].end,
+              sourceStart: Math.max(0, currentSegment[0].start - finalPadding),
+              sourceEnd: Math.min(
+                transcription[transcription.length - 1]?.end || 10000,
+                currentSegment[currentSegment.length - 1].end + finalPadding,
+              ),
             });
           }
         });
@@ -887,6 +903,10 @@ const EditorPage: React.FC = () => {
         onClipsChange={setClips}
         currentFrame={currentFrame}
         fps={VIDEO_FPS}
+        paddingEnabled={paddingEnabled}
+        onPaddingEnabledChange={setPaddingEnabled}
+        paddingDuration={paddingDuration}
+        onPaddingDurationChange={setPaddingDuration}
         onSeek={(frame) => {
           playerRef.current?.seekTo(frame);
           setCurrentFrame(frame);
