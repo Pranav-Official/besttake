@@ -70,7 +70,8 @@ export async function POST(req: Request) {
 
     const timestampedText = transcription
       .map(
-        (w: any) => `[${w.start.toFixed(2)}s - ${w.end.toFixed(2)}s] ${w.text}`,
+        (w: { start: number; end: number; text: string }) =>
+          `[${w.start.toFixed(2)}s - ${w.end.toFixed(2)}s] ${w.text}`,
       )
       .join("\\n");
 

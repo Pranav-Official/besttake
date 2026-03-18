@@ -4,6 +4,8 @@ import { cn } from "../lib/utils";
 import { Badge } from "./Badge";
 import { useEditor } from "../context/EditorContext";
 
+import { Button } from "./Button";
+
 interface TranscriptionViewProps {
   transcription: WordTranscription[];
   clips: Clip[];
@@ -165,25 +167,36 @@ export const TranscriptionView: React.FC<TranscriptionViewProps> = ({
         </div>
         <div className="flex gap-2 items-center">
           {onBestTake && (
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={onBestTake}
               disabled={isProcessingBestTake || transcription.length === 0}
               className={cn(
-                "text-xs font-bold px-3 py-1 rounded-full transition-colors flex items-center gap-1",
-                isProcessingBestTake
-                  ? "bg-[#9cb2d7]/20 text-[#9cb2d7] cursor-wait"
-                  : "bg-gradient-to-r from-indigo-500 to-purple-500 text-white hover:opacity-90 shadow-lg",
+                "relative font-bold overflow-hidden transition-all duration-300",
+                !isProcessingBestTake && transcription.length > 0
+                  ? "border border-transparent bg-clip-border before:absolute before:inset-0 before:p-[1px] before:bg-gradient-to-r before:from-indigo-500 before:to-purple-500 before:-z-10 before:rounded-geist after:absolute after:inset-[1px] after:bg-[#022540] after:-z-10 after:rounded-[calc(var(--radius-geist)-1px)] hover:after:bg-[#022540]/80"
+                  : "border-[#1d417c] text-[#9cb2d7]/50",
               )}
             >
-              {isProcessingBestTake ? (
-                <>
-                  <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                <>✨ Best Take</>
-              )}
-            </button>
+              <span
+                className={cn(
+                  "flex items-center gap-1.5 relative z-10",
+                  !isProcessingBestTake &&
+                    transcription.length > 0 &&
+                    "bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent",
+                )}
+              >
+                {isProcessingBestTake ? (
+                  <>
+                    <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    <span className="text-[#9cb2d7]">Processing...</span>
+                  </>
+                ) : (
+                  <>✨ Best Take</>
+                )}
+              </span>
+            </Button>
           )}
           <Badge
             variant="accent"

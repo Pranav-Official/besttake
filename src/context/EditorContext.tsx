@@ -34,6 +34,7 @@ interface EditorContextType {
   clips: Clip[];
 
   currentFrame: number;
+  zoom: number; // Added zoom state
   selectedRatio: AspectRatio;
   nativeDimensions: { width: number; height: number };
   isTranscribing: boolean;
@@ -58,13 +59,17 @@ interface EditorContextType {
   setSourceFiles: (
     files: SourceFile[] | ((prev: SourceFile[]) => SourceFile[]),
   ) => void;
+  setVideoSrc: (src: string | undefined) => void;
+  setServerVideoUrl: (url: string | undefined) => void;
   setTranscription: (t: WordTranscription[]) => void;
 
   setActiveTimelineId: (id: string) => void;
   addTimeline: (timeline: Timeline) => void;
+  removeTimeline: (id: string) => void; // Added remove timeline
   setClips: (c: Clip[] | ((prev: Clip[]) => Clip[])) => void;
 
   setCurrentFrame: (frame: number) => void;
+  setZoom: (zoom: number) => void; // Added zoom setter
   setSelectedRatio: (ratio: AspectRatio) => void;
   setNativeDimensions: (dim: { width: number; height: number }) => void;
   setIsTranscribing: (val: boolean) => void;
@@ -100,6 +105,7 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
     activeTimelineId,
     setActiveTimelineId,
     addTimeline,
+    removeTimeline,
     clips,
     setClips,
     undo,
@@ -109,6 +115,7 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
   } = useTimelineHistory([{ id: "original", name: "Original", clips: [] }]);
 
   const [currentFrame, setCurrentFrame] = useState(0);
+  const [zoom, setZoom] = useState(50); // Global zoom state
   const lastFrameRef = useRef(0);
 
   const [selectedRatio, setSelectedRatio] = useState<AspectRatio>("original");
@@ -231,6 +238,7 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
     activeTimelineId,
     clips,
     currentFrame,
+    zoom,
     selectedRatio,
     nativeDimensions,
     isTranscribing,
@@ -247,11 +255,15 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
     deletedWordIds,
     setView,
     setSourceFiles,
+    setVideoSrc: () => {}, // mock
+    setServerVideoUrl: () => {}, // mock
     setTranscription: () => {}, // No-op for now, needs refactor if used
     setActiveTimelineId,
     addTimeline,
+    removeTimeline,
     setClips,
     setCurrentFrame,
+    setZoom,
     setSelectedRatio,
     setNativeDimensions,
     setIsTranscribing,

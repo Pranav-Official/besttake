@@ -46,6 +46,23 @@ export function useTimelineHistory(
     [getTimelineHistory],
   );
 
+  const removeTimeline = useCallback(
+    (idToRemove: string) => {
+      setTimelines((prev) => {
+        const next = prev.filter((t) => t.id !== idToRemove);
+        if (next.length > 0 && activeTimelineId === idToRemove) {
+          setActiveTimelineId(next[0].id);
+        }
+        return next;
+      });
+      // Optional: cleanup historyMap to prevent memory leaks if many timelines are created and destroyed
+      if (historyMap.current.has(idToRemove)) {
+        historyMap.current.delete(idToRemove);
+      }
+    },
+    [activeTimelineId],
+  );
+
   const activeHistory = getTimelineHistory(
     activeTimelineId,
     timelines.find((t) => t.id === activeTimelineId)?.clips || [],
@@ -152,6 +169,7 @@ export function useTimelineHistory(
     activeTimelineId,
     setActiveTimelineId,
     addTimeline,
+    removeTimeline,
     clips: activeClips,
     setClips,
     undo,
