@@ -3,6 +3,15 @@ import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import fs from "fs";
 
+/**
+ * Silence detection endpoint (POST /api/silence)
+ * Uses Remotion's getSilentParts to identify audible and silent segments in a video.
+ *
+ * Body:
+ * - videoSrc: string (Path to the video file in public/uploads)
+ * - noiseThresholdInDecibels: number (Optional, default -20)
+ * - minDurationInSeconds: number (Optional, default 0.5)
+ */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();

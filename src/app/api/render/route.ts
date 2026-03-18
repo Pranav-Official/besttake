@@ -8,7 +8,10 @@ import { getRenderStore } from "../../../lib/render-store";
 // Cache the bundle for faster subsequent renders
 let cachedBundle: string | null = null;
 
-// Status check endpoint (GET /api/render?id=...)
+/**
+ * Status check endpoint (GET /api/render?id=...)
+ * Returns the current progress and status of a local render.
+ */
 export async function GET(request: NextRequest) {
   const id = request.nextUrl.searchParams.get("id");
   if (!id)
@@ -24,11 +27,20 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(status);
 }
 
-// Start render endpoint (POST /api/render)
+/**
+ * Start render endpoint (POST /api/render)
+ * Initiates a local video render using Remotion's bundle and renderMedia.
+ * The render runs in the background and updates a local store for polling.
+ *
+ * Body:
+ * - videoSrc: string (Path to the video file in public/uploads)
+ * - clips: Clip[] (Array of clip definitions)
+ * - dimensions: { width: number, height: number } (Target output resolution)
+ */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { videoSrc, clips, dimensions } = body;
+    const { videoSrc, clips } = body;
 
     if (!videoSrc || !clips) {
       return NextResponse.json(

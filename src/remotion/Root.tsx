@@ -6,7 +6,7 @@ import {
   VIDEO_HEIGHT,
   VIDEO_WIDTH,
   TCompositionProps,
-} from "../../types/constants";
+} from "../types/constants";
 import { Main } from "./MyComp/Main";
 import { NextLogo } from "./MyComp/NextLogo";
 

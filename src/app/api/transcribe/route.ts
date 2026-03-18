@@ -3,6 +3,13 @@ import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import fs from "fs";
 
+/**
+ * Video transcription endpoint (POST /api/transcribe)
+ * Calls a Python script (using Whisper) to generate word-level timestamps for a video.
+ *
+ * Body:
+ * - videoSrc: string (Path to the video file in public/uploads)
+ */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -67,7 +74,7 @@ export async function POST(request: NextRequest) {
           try {
             const transcription = JSON.parse(stdout);
             resolve(NextResponse.json(transcription));
-          } catch (err) {
+          } catch {
             console.error("Failed to parse transcription output:", stdout);
             resolve(
               NextResponse.json(

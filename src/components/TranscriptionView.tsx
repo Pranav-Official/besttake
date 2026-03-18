@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useEffect, useState } from "react";
-import { WordTranscription, Clip } from "../../types/constants";
+import { WordTranscription, Clip } from "../types/constants";
 import { cn } from "../lib/utils";
 import { Badge } from "./Badge";
 
@@ -25,7 +25,6 @@ export const TranscriptionView: React.FC<TranscriptionViewProps> = ({
   onDeleteWords,
   onToggleWordDelete,
   onSplitClip,
-  deletedWordIds,
   selectedWordIds,
   onSelectionChange,
   className,

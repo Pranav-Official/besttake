@@ -28,6 +28,8 @@ export type WordTranscription = z.infer<typeof WordTranscriptionSchema>;
 export type Clip = z.infer<typeof ClipSchema>;
 export type TCompositionProps = z.infer<typeof CompositionProps>;
 
+export type AspectRatio = "original" | "16:9" | "9:16" | "1:1";
+
 export const defaultMyCompProps: TCompositionProps = {
   title: "Speech Based Editor",
   videoSrc:

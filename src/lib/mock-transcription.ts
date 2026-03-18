@@ -1,4 +1,4 @@
-import { WordTranscription } from "../../types/constants";
+import { WordTranscription } from "../types/constants";
 
 export const mockTranscription: WordTranscription[] = [
   { id: "0", text: "This", start: 0, end: 0.5 },

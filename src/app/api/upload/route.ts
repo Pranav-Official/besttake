@@ -2,6 +2,13 @@ import { writeFile } from "fs/promises";
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 
+/**
+ * Video upload endpoint (POST /api/upload)
+ * Receives a file and saves it to the public/uploads directory.
+ *
+ * Body:
+ * - file: File (The video file to upload)
+ */
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();

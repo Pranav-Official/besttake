@@ -6,7 +6,7 @@ import {
   staticFile,
 } from "remotion";
 import { z } from "zod";
-import { CompositionProps } from "../../../types/constants";
+import { CompositionProps } from "../../types/constants";
 
 export const Main = ({
   videoSrc,

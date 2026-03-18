@@ -1,5 +1,6 @@
 import { Metadata, Viewport } from "next";
 import "../../styles/global.css";
+import { QueryProvider } from "../components/QueryProvider";
 
 export const metadata: Metadata = {
   title: "Remotion and Next.js",
@@ -19,7 +20,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-background">{children}</body>
+      <body className="bg-background">
+        <QueryProvider>{children}</QueryProvider>
+      </body>
     </html>
   );
 }
