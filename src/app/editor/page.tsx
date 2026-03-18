@@ -570,6 +570,61 @@ const EditorPage: React.FC = () => {
     [transcription, clips, setClips],
   );
 
+  const onSplitAtPlayhead = useCallback(() => {
+    if (clips.length === 0) return;
+
+    const targetEditedTime = currentFrame / VIDEO_FPS;
+    let accumulatedTime = 0;
+    let clipIndex = -1;
+
+    for (let i = 0; i < clips.length; i++) {
+      const duration = clips[i].sourceEnd - clips[i].sourceStart;
+      if (
+        targetEditedTime >= accumulatedTime &&
+        targetEditedTime <= accumulatedTime + duration
+      ) {
+        clipIndex = i;
+        break;
+      }
+      accumulatedTime += duration;
+    }
+
+    if (clipIndex === -1) return;
+
+    const clip = clips[clipIndex];
+    const splitPointInClip = targetEditedTime - accumulatedTime;
+    const splitSourceTime = clip.sourceStart + splitPointInClip;
+
+    // Don't split at the very beginning or end of a clip (min 0.1s)
+    if (
+      splitPointInClip < 0.1 ||
+      splitPointInClip > clip.sourceEnd - clip.sourceStart - 0.1
+    ) {
+      return;
+    }
+
+    setClips((prev) => {
+      const next = [...prev];
+      const target = next[clipIndex];
+
+      const leftClip: Clip = {
+        ...target,
+        id: `${target.id}-pt1-${Date.now()}`,
+        sourceEnd: splitSourceTime,
+        logicalEnd: splitSourceTime,
+      };
+      const rightClip: Clip = {
+        ...target,
+        id: `${target.id}-pt2-${Date.now()}`,
+        sourceStart: splitSourceTime,
+        logicalStart: splitSourceTime,
+      };
+
+      next.splice(clipIndex, 1, leftClip, rightClip);
+      return next;
+    });
+  }, [currentFrame, clips, setClips]);
+
   const onTrimSilences = useCallback(
     async (noiseThreshold: number, minDuration: number) => {
       if (!serverVideoUrl) return;
@@ -999,6 +1054,7 @@ const EditorPage: React.FC = () => {
         onPaddingDurationChange={setPaddingDuration}
         onTrimSilences={onTrimSilences}
         isTrimmingSilences={isTrimmingSilences}
+        onSplitAtPlayhead={onSplitAtPlayhead}
         onSeek={(frame) => {
           playerRef.current?.seekTo(frame);
           setCurrentFrame(frame);

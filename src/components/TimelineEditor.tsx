@@ -15,6 +15,7 @@ interface TimelineEditorProps {
   onPaddingDurationChange: (duration: number) => void;
   onTrimSilences: (noiseThreshold: number, minDuration: number) => void;
   isTrimmingSilences: boolean;
+  onSplitAtPlayhead?: () => void;
   className?: string;
 }
 
@@ -31,25 +32,77 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
   onPaddingDurationChange,
   onTrimSilences,
   isTrimmingSilences,
+  onSplitAtPlayhead,
   className,
 }) => {
   const [zoom, setZoom] = useState(50); // pixels per second
   const containerRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
 
-  // Silence Tool State
+  // Tools State
+  const [isGrabMode, setIsGrabMode] = useState(false);
   const [showSilenceTool, setShowSilenceTool] = useState(false);
   const [noiseThreshold, setNoiseThreshold] = useState(-20);
   const [minDuration, setMinDuration] = useState(0.5);
 
+  // Dragging/Reordering State
+  const [reorderState, setReorderState] = useState<{
+    draggedIndex: number;
+    tempClips: Clip[];
+  } | null>(null);
+
+  // Trimming State
+  const [trimmingState, setTrimmingState] = useState<{
+    clipId: string;
+    handle: "left" | "right";
+    initialX: number;
+    initialValue: number;
+    initialTimelineStarts: Record<string, number>;
+    tempClips: Clip[];
+  } | null>(null);
+
+  // Use a ref to keep track of the current trimmingState without triggering useEffect re-runs
+  const trimmingStateRef = useRef(trimmingState);
+  useEffect(() => {
+    trimmingStateRef.current = trimmingState;
+  }, [trimmingState]);
+
   const processedClips = useMemo(() => {
+    let sourceClips = clips;
+    if (reorderState) {
+      sourceClips = reorderState.tempClips;
+    } else if (trimmingState) {
+      sourceClips = trimmingState.tempClips;
+    }
+
     let accumulatedTimelineStart = 0;
-    return clips.map((clip) => {
+    return sourceClips.map((clip) => {
       const duration = clip.sourceEnd - clip.sourceStart;
-      const timelineStart = accumulatedTimelineStart;
+
+      // If we are trimming or reordering, we use the CAPTURED starting positions to create "gaps"
+      // or to maintain the visual position during reorder.
+      // For reordering, we actually want it to snap in real-time,
+      // but for trimming, we want gaps.
+
+      let timelineStart = accumulatedTimelineStart;
+
+      if (trimmingState) {
+        timelineStart = trimmingState.initialTimelineStarts[clip.id] ?? 0;
+        // Special case: If we are trimming the LEFT handle of THIS clip,
+        // its visual start position in the timeline must move to create a gap/overlap
+        if (
+          trimmingState.clipId === clip.id &&
+          trimmingState.handle === "left"
+        ) {
+          const delta = clip.sourceStart - trimmingState.initialValue;
+          timelineStart += delta;
+        }
+      }
+
       accumulatedTimelineStart += duration;
 
       // Find text preview
+
       const lStart = clip.logicalStart ?? clip.sourceStart;
       const lEnd = clip.logicalEnd ?? clip.sourceEnd;
 
@@ -69,12 +122,21 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
         textPreview,
       };
     });
-  }, [transcription, clips]);
+  }, [transcription, clips, trimmingState, reorderState, zoom]);
 
-  const totalEditedDuration = processedClips.reduce(
-    (acc, clip) => acc + clip.duration,
-    0,
-  );
+  const totalEditedDuration = useMemo(() => {
+    if (processedClips.length === 0) return 0;
+    const lastClip = processedClips[processedClips.length - 1];
+
+    // For trimming, we need to account for gaps that might extend beyond the last clip's end
+    if (trimmingState) {
+      return Math.max(
+        ...processedClips.map((c) => c.timelineStart + c.duration),
+      );
+    }
+
+    return lastClip.timelineStart + lastClip.duration;
+  }, [processedClips, trimmingState]);
   const timelineWidth = totalEditedDuration * zoom;
 
   // Sync scroll to playhead when zooming
@@ -106,7 +168,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
 
   // Handle seeking
   const handleTimelineClick = (e: React.MouseEvent) => {
-    if (!trackRef.current) return;
+    if (!trackRef.current || isGrabMode) return;
     const rect = trackRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const time = x / zoom;
@@ -127,6 +189,175 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
   const deleteClip = (index: number) => {
     onClipsChange(clips.filter((_, i) => i !== index));
   };
+
+  const handleDragStart = (e: React.MouseEvent, index: number) => {
+    if (!isGrabMode) return;
+    e.stopPropagation();
+    e.preventDefault();
+    setReorderState({
+      draggedIndex: index,
+      tempClips: [...clips],
+    });
+  };
+
+  useEffect(() => {
+    if (reorderState === null) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const container = containerRef.current;
+      if (!container || !reorderState) return;
+
+      const rect = container.getBoundingClientRect();
+      const deltaX = e.clientX - rect.left;
+      const mouseTimelinePos = (deltaX + container.scrollLeft) / zoom;
+
+      // Find the new index based on mouse position
+      let newIndex = 0;
+      let currentPos = 0;
+      const currentTempClips = reorderState.tempClips;
+      const originalClip = currentTempClips[reorderState.draggedIndex];
+
+      const clipsWithoutDragged = currentTempClips.filter(
+        (_, i) => i !== reorderState.draggedIndex,
+      );
+
+      for (let i = 0; i < clipsWithoutDragged.length; i++) {
+        const duration =
+          clipsWithoutDragged[i].sourceEnd - clipsWithoutDragged[i].sourceStart;
+        if (mouseTimelinePos > currentPos + duration / 2) {
+          newIndex = i + 1;
+        }
+        currentPos += duration;
+      }
+
+      if (newIndex !== reorderState.draggedIndex) {
+        const nextClips = [...clipsWithoutDragged];
+        nextClips.splice(newIndex, 0, originalClip);
+
+        setReorderState({
+          draggedIndex: newIndex,
+          tempClips: nextClips,
+        });
+      }
+    };
+
+    const handleMouseUp = () => {
+      if (reorderState) {
+        onClipsChange(reorderState.tempClips);
+      }
+      setReorderState(null);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [reorderState?.draggedIndex, zoom, onClipsChange]);
+
+  const handleTrimStart = (
+    e: React.MouseEvent,
+    clipId: string,
+    handle: "left" | "right",
+    currentValue: number,
+  ) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    // 1. Capture current timeline starts for all clips to create "gaps" during drag
+    const initialTimelineStarts: Record<string, number> = {};
+    let accumulated = 0;
+    clips.forEach((c) => {
+      initialTimelineStarts[c.id] = accumulated;
+      accumulated += c.sourceEnd - c.sourceStart;
+    });
+
+    setTrimmingState({
+      clipId,
+      handle,
+      initialX: e.clientX,
+      initialValue: currentValue,
+      initialTimelineStarts,
+      tempClips: [...clips],
+    });
+  };
+
+  useEffect(() => {
+    if (!trimmingState?.clipId) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const currentTrimmingState = trimmingStateRef.current;
+      if (!currentTrimmingState) return;
+
+      const deltaX = e.clientX - currentTrimmingState.initialX;
+      const deltaTime = deltaX / zoom;
+      const newValue = Math.max(
+        0,
+        currentTrimmingState.initialValue + deltaTime,
+      );
+
+      let constrainedValue = newValue;
+      let targetTimelineSeekFrame = 0;
+
+      const nextTempClips = currentTrimmingState.tempClips.map((clip) => {
+        if (clip.id !== currentTrimmingState.clipId) return clip;
+
+        if (currentTrimmingState.handle === "left") {
+          constrainedValue = Math.min(newValue, clip.sourceEnd - 0.1);
+          const delta = constrainedValue - currentTrimmingState.initialValue;
+          const timelineStart =
+            (currentTrimmingState.initialTimelineStarts[clip.id] ?? 0) + delta;
+          targetTimelineSeekFrame = Math.floor(timelineStart * fps);
+
+          return {
+            ...clip,
+            sourceStart: constrainedValue,
+            logicalStart: constrainedValue,
+          };
+        } else {
+          constrainedValue = Math.max(newValue, clip.sourceStart + 0.1);
+          const timelineStart =
+            currentTrimmingState.initialTimelineStarts[clip.id] ?? 0;
+          const duration = constrainedValue - clip.sourceStart;
+          targetTimelineSeekFrame = Math.floor(
+            (timelineStart + duration) * fps,
+          );
+
+          return {
+            ...clip,
+            sourceEnd: constrainedValue,
+            logicalEnd: constrainedValue,
+          };
+        }
+      });
+
+      // 1. Seek the player (Side effect)
+      // Seek to the point in the edited timeline where the frame is being trimmed
+      onSeek(targetTimelineSeekFrame);
+
+      // 2. Update local state for visual gaps/overlaps
+      setTrimmingState({ ...currentTrimmingState, tempClips: nextTempClips });
+    };
+
+    const handleMouseUp = () => {
+      const finalTrimmingState = trimmingStateRef.current;
+      if (finalTrimmingState) {
+        // 3. Commit the final state to the global clips (this triggers the "Snap")
+        onClipsChange(finalTrimmingState.tempClips);
+      }
+      setTrimmingState(null);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [trimmingState?.clipId, zoom, fps, onClipsChange, onSeek]);
 
   const renderRuler = () => {
     const markers = [];
@@ -160,6 +391,61 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
           <div className="flex items-center gap-2 text-[10px] font-bold text-[#9cb2d7]/80 uppercase tracking-wider">
             <span className="w-2 h-2 rounded-full bg-[#9cb2d7]"></span>
             Video 1 ({clips.length} clips)
+          </div>
+
+          <div className="flex items-center gap-1.5 ml-2 border-l border-[#1d417c] pl-3">
+            {/* Split Tool */}
+            <button
+              onClick={onSplitAtPlayhead}
+              className="w-7 h-7 flex items-center justify-center rounded bg-[#011626]/40 border border-[#1d417c] text-[#9cb2d7] hover:bg-[#1d417c]/40 hover:text-[#f1f2f3] transition-all"
+              title="Split at Playhead"
+            >
+              <svg
+                className="w-3.5 h-3.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="6" cy="6" r="3"></circle>
+                <circle cx="6" cy="18" r="3"></circle>
+                <line x1="20" y1="4" x2="8.12" y2="15.88"></line>
+                <line x1="14.47" y1="14.48" x2="20" y2="20"></line>
+                <line x1="8.12" y1="8.12" x2="12" y2="12"></line>
+              </svg>
+            </button>
+
+            {/* Grab Mode Tool */}
+            <button
+              onClick={() => setIsGrabMode(!isGrabMode)}
+              className={cn(
+                "w-7 h-7 flex items-center justify-center rounded border transition-all",
+                isGrabMode
+                  ? "bg-[#9cb2d7] border-[#9cb2d7] text-[#011626]"
+                  : "bg-[#011626]/40 border-[#1d417c] text-[#9cb2d7] hover:bg-[#1d417c]/40 hover:text-[#f1f2f3]",
+              )}
+              title={
+                isGrabMode
+                  ? "Exit Grab Mode"
+                  : "Enter Grab Mode (Reorder Clips)"
+              }
+            >
+              <svg
+                className="w-3.5 h-3.5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0V12m-3 .5a1.5 1.5 0 003 0m0 0V4a1.5 1.5 0 113 0v10m-3-2a1.5 1.5 0 013 0m0 0V6a1.5 1.5 0 113 0v10m-3-2.5a1.5 1.5 0 013 0m0 0V14a1.5 1.5 0 013 0m0 0h.5a1.5 1.5 0 011.5 1.5v2.5a4 4 0 01-4 4H10a4 4 0 01-4-4v-1.5"
+                />
+              </svg>
+            </button>
           </div>
         </div>
 
@@ -420,18 +706,60 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
               {processedClips.map((clip, index) => (
                 <div
                   key={`video-${clip.id}`}
-                  className="absolute top-2 bottom-2 bg-[#1d417c]/40 border border-[#9cb2d7]/30 rounded-lg overflow-hidden flex flex-col group hover:border-[#9cb2d7]/60 transition-all shadow-[0_4px_10px_rgba(0,0,0,0.3)] backdrop-blur-sm"
+                  className={cn(
+                    "absolute top-2 bottom-2 bg-[#1d417c]/40 border border-[#9cb2d7]/30 rounded-lg overflow-hidden flex flex-col group transition-all shadow-[0_4px_10px_rgba(0,0,0,0.3)] backdrop-blur-sm",
+                    !isGrabMode && "hover:border-[#9cb2d7]/60",
+                    isGrabMode &&
+                      "cursor-grab active:cursor-grabbing hover:bg-[#1d417c]/60",
+                    reorderState?.draggedIndex === index &&
+                      "opacity-50 ring-2 ring-[#9cb2d7] z-50",
+                  )}
                   style={{
                     left: clip.timelineStart * zoom,
                     width: Math.max(2, clip.duration * zoom - 2),
                   }}
+                  onMouseDown={(e) => handleDragStart(e, index)}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="flex-1 p-2 flex flex-col items-start overflow-hidden">
+                  {/* Left Trim Handle */}
+                  {!isGrabMode && (
+                    <div
+                      className={cn(
+                        "absolute left-0 top-0 bottom-0 w-1.5 bg-white/20 hover:bg-[#7ead70] cursor-col-resize z-20 transition-all border-r border-white/10 group-hover:w-2.5",
+                        trimmingState?.clipId === clip.id &&
+                          trimmingState.handle === "left" &&
+                          "bg-[#7ead70] w-3",
+                      )}
+                      onMouseDown={(e) =>
+                        handleTrimStart(e, clip.id, "left", clip.sourceStart)
+                      }
+                    >
+                      <div className="absolute inset-y-0 right-[1px] w-[1px] bg-white/30" />
+                    </div>
+                  )}
+
+                  {/* Right Trim Handle */}
+                  {!isGrabMode && (
+                    <div
+                      className={cn(
+                        "absolute right-0 top-0 bottom-0 w-1.5 bg-white/20 hover:bg-[#7ead70] cursor-col-resize z-20 transition-all border-l border-white/10 group-hover:w-2.5",
+                        trimmingState?.clipId === clip.id &&
+                          trimmingState.handle === "right" &&
+                          "bg-[#7ead70] w-3",
+                      )}
+                      onMouseDown={(e) =>
+                        handleTrimStart(e, clip.id, "right", clip.sourceEnd)
+                      }
+                    >
+                      <div className="absolute inset-y-0 left-[1px] w-[1px] bg-white/30" />
+                    </div>
+                  )}
+
+                  <div className="flex-1 p-2 flex flex-col items-start overflow-hidden pointer-events-none select-none">
                     <p className="text-[10px] font-medium text-[#f1f2f3] leading-tight line-clamp-1 mb-1">
                       "{clip.textPreview}"
                     </p>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto">
                       <button
                         onClick={() => moveClip(index, "left")}
                         disabled={index === 0}
