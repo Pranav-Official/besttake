@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
 import { useEditor } from "../../context/EditorContext";
 import { Dropdown } from "../Dropdown";
 import { AspectRatio } from "../../types/constants";
@@ -9,10 +9,11 @@ import { RenderModal } from "../RenderModal";
 
 export const EditorHeader = () => {
   const {
-    videoSrc,
+    view,
+    setView,
     selectedRatio,
     setSelectedRatio,
-    serverVideoUrl,
+    sourceFiles,
     clips,
     dimensions,
   } = useEditor();
@@ -37,13 +38,9 @@ export const EditorHeader = () => {
   ];
 
   const handleExport = async () => {
-    if (!serverVideoUrl) {
-      alert("Local video path not found. Please re-upload the video.");
-      return;
-    }
     setShowRenderModal(true);
     try {
-      await startRender({ serverVideoUrl, clips, dimensions });
+      await startRender({ sourceFiles, clips, dimensions });
     } catch (err) {
       console.error("Export failed:", err);
     }
@@ -72,12 +69,24 @@ export const EditorHeader = () => {
             <span className="font-bold tracking-tight">Best Take</span>
           </div>
           <nav className="flex gap-4 text-xs font-medium text-[#9cb2d7]/70">
-            <button className="hover:text-[#f1f2f3]">File</button>
-            <button className="hover:text-[#f1f2f3] text-[#f1f2f3] border-b-2 border-[#9cb2d7]">
-              Edit
+            <button
+              onClick={() => setView("management")}
+              className={`hover:text-[#f1f2f3] transition-colors ${view === "management" ? "text-[#f1f2f3] border-b-2 border-[#9cb2d7]" : ""}`}
+            >
+              File Management
             </button>
-            <button className="hover:text-[#f1f2f3]">View</button>
-            <button className="hover:text-[#f1f2f3]">Export</button>
+            <button
+              onClick={() => setView("editor")}
+              className={`hover:text-[#f1f2f3] transition-colors ${view === "editor" ? "text-[#f1f2f3] border-b-2 border-[#9cb2d7]" : ""}`}
+            >
+              Editor
+            </button>
+            <button className="hover:text-[#f1f2f3] transition-colors">
+              View
+            </button>
+            <button className="hover:text-[#f1f2f3] transition-colors">
+              Export
+            </button>
           </nav>
         </div>
         <div className="flex items-center gap-4">
@@ -90,8 +99,8 @@ export const EditorHeader = () => {
           </div>
           <button
             onClick={handleExport}
-            disabled={isRendering || !videoSrc}
-            className="bg-[#9cb2d7] hover:bg-opacity-90 disabled:opacity-50 text-[#011626] text-xs px-4 py-1.5 rounded-md font-semibold"
+            disabled={isRendering || clips.length === 0}
+            className="bg-[#9cb2d7] hover:bg-opacity-90 disabled:opacity-50 text-[#011626] text-xs px-4 py-1.5 rounded-md font-semibold transition-all"
           >
             {isRendering ? "Exporting..." : "Export Video"}
           </button>

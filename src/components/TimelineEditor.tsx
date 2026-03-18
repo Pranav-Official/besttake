@@ -101,13 +101,12 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
 
       accumulatedTimelineStart += duration;
 
-      // Find text preview
-
-      const lStart = clip.logicalStart ?? clip.sourceStart;
-      const lEnd = clip.logicalEnd ?? clip.sourceEnd;
-
+      // Find text preview from the unified transcription
+      // The unified transcription words have 'start' and 'end' in timeline time
       const wordsInClip = transcription.filter(
-        (w) => w.start >= lStart - 0.01 && w.end <= lEnd + 0.01,
+        (w) =>
+          w.start >= timelineStart - 0.01 &&
+          w.end <= timelineStart + duration + 0.01,
       );
       const textPreview =
         wordsInClip

@@ -14,14 +14,19 @@ import {
   WordTranscription,
   VIDEO_FPS,
   AspectRatio,
+  SourceFile,
 } from "../types/constants";
 import { useHistory } from "../hooks/use-history";
 
+export type EditorView = "management" | "editor";
+
 interface EditorContextType {
   // State
-  videoSrc: string | undefined;
+  view: EditorView;
+  sourceFiles: SourceFile[];
+  videoSrc: string | undefined; // Still used for preview/single video compatibility if needed
   serverVideoUrl: string | undefined;
-  transcription: WordTranscription[];
+  transcription: WordTranscription[]; // This will now be the CONCATENATED transcription in editor mode
   clips: Clip[];
   currentFrame: number;
   selectedRatio: AspectRatio;
@@ -31,6 +36,7 @@ interface EditorContextType {
   paddingEnabled: boolean;
   paddingDuration: number;
   selectedWordIds: Set<string>;
+  activeFileId: string | null;
 
   // Ref
   playerRef: React.RefObject<PlayerRef | null>;
@@ -43,6 +49,10 @@ interface EditorContextType {
   deletedWordIds: Set<string>;
 
   // Actions
+  setView: (view: EditorView) => void;
+  setSourceFiles: (
+    files: SourceFile[] | ((prev: SourceFile[]) => SourceFile[]),
+  ) => void;
   setVideoSrc: (src: string | undefined) => void;
   setServerVideoUrl: (url: string | undefined) => void;
   setTranscription: (t: WordTranscription[]) => void;
@@ -55,6 +65,7 @@ interface EditorContextType {
   setPaddingEnabled: (val: boolean) => void;
   setPaddingDuration: (val: number) => void;
   setSelectedWordIds: (ids: Set<string>) => void;
+  setActiveFileId: (id: string | null) => void;
 
   // History
   undo: () => void;
@@ -66,11 +77,12 @@ interface EditorContextType {
 const EditorContext = createContext<EditorContextType | undefined>(undefined);
 
 export const EditorProvider = ({ children }: { children: ReactNode }) => {
+  const [view, setView] = useState<EditorView>("management");
+  const [sourceFiles, setSourceFiles] = useState<SourceFile[]>([]);
   const [videoSrc, setVideoSrc] = useState<string | undefined>(undefined);
   const [serverVideoUrl, setServerVideoUrl] = useState<string | undefined>(
     undefined,
   );
-  const [transcription, setTranscription] = useState<WordTranscription[]>([]);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isUnsupportedCodec, setIsUnsupportedCodec] = useState(false);
   const [paddingEnabled, setPaddingEnabled] = useState(true);
@@ -78,6 +90,7 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
   const [selectedWordIds, setSelectedWordIds] = useState<Set<string>>(
     new Set(),
   );
+  const [activeFileId, setActiveFileId] = useState<string | null>(null);
 
   const {
     state: clips,
@@ -98,6 +111,41 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
   });
 
   const playerRef = useRef<PlayerRef>(null);
+
+  // Derived: unifiedTranscription
+  const unifiedTranscription = useMemo(() => {
+    if (view === "management") return [];
+
+    const result: WordTranscription[] = [];
+    let accumulatedTime = 0;
+
+    clips.forEach((clip, clipIndex) => {
+      const sourceFile = sourceFiles.find((f) => f.id === clip.fileId);
+      if (!sourceFile) return;
+
+      const duration = clip.sourceEnd - clip.sourceStart;
+      const lStart = clip.logicalStart ?? clip.sourceStart;
+      const lEnd = clip.logicalEnd ?? clip.sourceEnd;
+
+      const wordsInClip = sourceFile.transcription.filter(
+        (w) => w.start >= lStart - 0.01 && w.end <= lEnd + 0.01,
+      );
+
+      wordsInClip.forEach((w) => {
+        result.push({
+          ...w,
+          id: `word-${clip.id}-${w.id}`, // Use clip.id for stability
+          clipId: clip.id,
+          start: w.start - clip.sourceStart + accumulatedTime,
+          end: w.end - clip.sourceStart + accumulatedTime,
+        });
+      });
+
+      accumulatedTime += duration;
+    });
+
+    return result;
+  }, [view, clips, sourceFiles]);
 
   // Derived: editedDurationInFrames
   const editedDurationInFrames = useMemo(() => {
@@ -155,23 +203,15 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
 
   // Derived: deletedWordIds
   const deletedWordIds = useMemo(() => {
-    const ids = new Set<string>();
-    transcription.forEach((word) => {
-      const midpoint = (word.start + word.end) / 2;
-      const isCovered = clips.some((clip) => {
-        const lStart = clip.logicalStart ?? clip.sourceStart;
-        const lEnd = clip.logicalEnd ?? clip.sourceEnd;
-        return midpoint >= lStart - 0.01 && midpoint <= lEnd + 0.01;
-      });
-      if (!isCovered) ids.add(word.id);
-    });
-    return ids;
-  }, [transcription, clips]);
+    return new Set<string>();
+  }, []);
 
   const value: EditorContextType = {
+    view,
+    sourceFiles,
     videoSrc,
     serverVideoUrl,
-    transcription,
+    transcription: unifiedTranscription,
     clips,
     currentFrame,
     selectedRatio,
@@ -181,15 +221,18 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
     paddingEnabled,
     paddingDuration,
     selectedWordIds,
+    activeFileId,
     playerRef,
     lastFrameRef,
     dimensions,
     editedDurationInFrames,
     originalCurrentTime,
     deletedWordIds,
+    setView,
+    setSourceFiles,
     setVideoSrc,
     setServerVideoUrl,
-    setTranscription,
+    setTranscription: () => {}, // No-op for now, needs refactor if used
     setClips,
     setCurrentFrame,
     setSelectedRatio,
@@ -199,6 +242,7 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
     setPaddingEnabled,
     setPaddingDuration,
     setSelectedWordIds,
+    setActiveFileId,
     undo,
     redo,
     canUndo,

@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Clip } from "../types/constants";
+import { Clip, SourceFile } from "../types/constants";
 
 /**
  * A hook that manages the video rendering process (export),
@@ -12,10 +12,12 @@ export const useRenderManager = () => {
   const startRenderMutation = useMutation({
     mutationFn: async ({
       serverVideoUrl,
+      sourceFiles,
       clips,
       dimensions,
     }: {
-      serverVideoUrl: string;
+      serverVideoUrl?: string;
+      sourceFiles: SourceFile[];
       clips: Clip[];
       dimensions: { width: number; height: number };
     }) => {
@@ -24,6 +26,7 @@ export const useRenderManager = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           videoSrc: serverVideoUrl,
+          sourceFiles,
           clips,
           dimensions,
         }),

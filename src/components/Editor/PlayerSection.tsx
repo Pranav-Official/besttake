@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { Player } from "@remotion/player";
 import { useEditor } from "../../context/EditorContext";
 import { Main } from "../../remotion/MyComp/Main";
@@ -10,7 +10,7 @@ import { usePlayerFrame } from "../../hooks/use-player-frame";
 
 export const PlayerSection = () => {
   const {
-    videoSrc,
+    sourceFiles,
     dimensions,
     editedDurationInFrames,
     currentFrame,
@@ -35,17 +35,17 @@ export const PlayerSection = () => {
       setCurrentFrame(newFrame);
       lastFrameRef.current = newFrame;
     },
-    [videoSrc, selectedRatio, isUnsupportedCodec, dimensions],
+    [sourceFiles, selectedRatio, isUnsupportedCodec, dimensions],
   );
 
   const inputProps = useMemo(() => {
     return {
       title: "Speech Based Editor",
-      videoSrc,
+      sourceFiles,
       transcription,
       clips,
     };
-  }, [videoSrc, transcription, clips]);
+  }, [sourceFiles, transcription, clips]);
 
   return (
     <section className="w-3/5 border-r border-[#1d417c] flex flex-col bg-black/20 relative">
@@ -99,7 +99,7 @@ export const PlayerSection = () => {
 
       <div className="flex-1 relative flex items-center justify-center bg-black">
         <Player
-          key={`${videoSrc}-${dimensions.width}x${dimensions.height}`}
+          key={`player-${sourceFiles.length}-${dimensions.width}x${dimensions.height}`}
           ref={playerRef}
           component={Main}
           inputProps={inputProps}

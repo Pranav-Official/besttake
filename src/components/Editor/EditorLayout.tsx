@@ -1,6 +1,5 @@
 "use client";
 
-import React from "react";
 import { useEditor } from "../../context/EditorContext";
 import { EditorHeader } from "./EditorHeader";
 import { PlayerSection } from "./PlayerSection";
@@ -10,14 +9,13 @@ import { VIDEO_FPS } from "../../types/constants";
 import { useKeyboardShortcuts } from "../../hooks/use-keyboard-shortcuts";
 import { useSilenceDetection } from "../../hooks/use-silence-detection";
 import { useEditorActions } from "../../hooks/use-editor-actions";
-import { useVideoUpload } from "../../hooks/use-video-upload";
-import { VideoUploader } from "../VideoUploader";
 import { useMountEffect } from "../../hooks/use-mount-effect";
-import Link from "next/link";
+import { ClipManagement } from "./ClipManagement/ClipManagement";
 
 export const EditorLayout = () => {
   const {
-    videoSrc,
+    view,
+    sourceFiles,
     serverVideoUrl,
     transcription,
     clips,
@@ -38,7 +36,6 @@ export const EditorLayout = () => {
   } = useEditor();
 
   const { onDeleteWords, onSplitAtPlayhead } = useEditorActions();
-  const { onUpload } = useVideoUpload();
   const { mutateAsync: trimSilences, isPending: isTrimmingSilences } =
     useSilenceDetection();
 
@@ -46,17 +43,19 @@ export const EditorLayout = () => {
     noiseThreshold: number,
     minDuration: number,
   ) => {
-    if (!serverVideoUrl) return;
+    if (!serverVideoUrl || sourceFiles.length === 0) return;
     try {
       const audibleParts = await trimSilences({
         serverVideoUrl,
         noiseThreshold,
         minDuration,
       });
+      const firstFileId = sourceFiles[0].id;
       const nextClips = audibleParts.map((part, i) => {
         const finalPadding = paddingEnabled ? paddingDuration : 0;
         return {
           id: `audible-${i}-${Date.now()}`,
+          fileId: firstFileId,
           sourceStart: Math.max(0, part.startInSeconds - finalPadding),
           sourceEnd: Math.min(
             transcription[transcription.length - 1]?.end || 10000,
@@ -111,37 +110,11 @@ export const EditorLayout = () => {
     };
   });
 
-  if (!videoSrc) {
+  if (view === "management") {
     return (
-      <div className="min-h-screen bg-[#011626] text-[#f1f2f3] flex flex-col">
-        <header className="h-12 border-b border-[#1d417c] bg-[#022540] flex items-center justify-between px-4 shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-[#9cb2d7] rounded-md flex items-center justify-center">
-              <svg
-                className="w-4 h-4 text-[#011626]"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                ></path>
-              </svg>
-            </div>
-            <span className="font-bold tracking-tight">Best Take</span>
-          </div>
-          <Link href="/" className="text-xs text-[#9cb2d7] hover:underline">
-            Back to Home
-          </Link>
-        </header>
-        <main className="flex-1 flex items-center justify-center p-8">
-          <div className="w-full max-w-xl">
-            <VideoUploader onUpload={onUpload} />
-          </div>
-        </main>
+      <div className="h-screen flex flex-col bg-[#011626] text-[#f1f2f3] overflow-hidden">
+        <EditorHeader />
+        <ClipManagement />
       </div>
     );
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback } from "react";
+import { useCallback } from "react";
 import { useEditor } from "../../context/EditorContext";
 import { TranscriptionView } from "../TranscriptionView";
 import { VIDEO_FPS } from "../../types/constants";
@@ -10,7 +10,7 @@ export const TranscriptionSidebar = () => {
   const {
     transcription,
     clips,
-    originalCurrentTime,
+    currentFrame,
     deletedWordIds,
     playerRef,
     setCurrentFrame,
@@ -21,34 +21,16 @@ export const TranscriptionSidebar = () => {
 
   const { onDeleteWords, onSplitClip } = useEditorActions();
 
-  const getEditedTime = useCallback(
-    (originalStartTime: number) => {
-      let accumulatedEditedTime = 0;
-      for (const clip of clips) {
-        if (
-          originalStartTime >= clip.sourceStart &&
-          originalStartTime <= clip.sourceEnd
-        ) {
-          return accumulatedEditedTime + (originalStartTime - clip.sourceStart);
-        }
-        accumulatedEditedTime += clip.sourceEnd - clip.sourceStart;
-      }
-      return accumulatedEditedTime;
-    },
-    [clips],
-  );
-
   const onWordClick = useCallback(
-    (originalStartTime: number) => {
+    (timelineStartTime: number) => {
       if (playerRef.current) {
-        const editedTime = getEditedTime(originalStartTime);
-        const frame = Math.floor(editedTime * VIDEO_FPS);
+        const frame = Math.floor(timelineStartTime * VIDEO_FPS);
         playerRef.current.seekTo(frame);
         setCurrentFrame(frame);
         lastFrameRef.current = frame;
       }
     },
-    [getEditedTime, playerRef, setCurrentFrame, lastFrameRef],
+    [playerRef, setCurrentFrame, lastFrameRef],
   );
 
   const onToggleWordDelete = useCallback(
@@ -65,7 +47,7 @@ export const TranscriptionSidebar = () => {
       <TranscriptionView
         transcription={transcription}
         clips={clips}
-        currentTime={originalCurrentTime}
+        currentTime={currentFrame / VIDEO_FPS}
         onWordClick={onWordClick}
         onDeleteWords={(ids) => {
           onDeleteWords(ids);

@@ -40,9 +40,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { videoSrc, clips } = body;
+    const { videoSrc, clips, sourceFiles } = body;
 
-    if (!videoSrc || !clips) {
+    if (!clips) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 },
@@ -88,6 +88,7 @@ export async function POST(request: NextRequest) {
         // 3. Setup Props
         const inputProps = {
           videoSrc,
+          sourceFiles,
           clips,
           title: "Exported Video",
         };

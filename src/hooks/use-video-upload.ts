@@ -2,28 +2,51 @@ import { useCallback } from "react";
 import { parseMedia } from "@remotion/media-parser";
 import { useEditor } from "../context/EditorContext";
 import { generateMockTranscription } from "../lib/mock-transcription";
+import { SourceFile } from "../types/constants";
+
+const generateThumbnail = (videoUrl: string): Promise<string> => {
+  return new Promise((resolve) => {
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.src = videoUrl;
+    video.crossOrigin = "anonymous";
+    video.currentTime = 1; // Capture at 1 second
+
+    video.onseeked = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.7));
+      } else {
+        resolve("");
+      }
+      video.remove();
+    };
+
+    video.onerror = () => {
+      resolve("");
+      video.remove();
+    };
+  });
+};
 
 /**
  * A hook that manages video uploading and metadata extraction.
  */
 export const useVideoUpload = () => {
   const {
-    videoSrc,
-    setVideoSrc,
-    setServerVideoUrl,
-    setTranscription,
-    setClips,
+    setSourceFiles,
     setNativeDimensions,
     setIsUnsupportedCodec,
     setIsTranscribing,
+    setActiveFileId,
   } = useEditor();
 
   const onUpload = useCallback(
     async (src: string, file: File, serverUrl?: string) => {
-      if (videoSrc && videoSrc.startsWith("blob:")) {
-        URL.revokeObjectURL(videoSrc);
-      }
-
       const fetchMetadata = async (videoUrl: string) => {
         try {
           const meta = await parseMedia({
@@ -65,10 +88,30 @@ export const useVideoUpload = () => {
           setIsUnsupportedCodec(true);
         }
 
-        setNativeDimensions({ width: metadata.width, height: metadata.height });
-        setVideoSrc(src);
-        setServerVideoUrl(serverUrl);
+        const fileId = `file-${Date.now()}`;
 
+        // Generate thumbnail
+        const thumbnailUrl = await generateThumbnail(src);
+
+        // Create the file object without transcription first
+        const newSourceFile: SourceFile = {
+          id: fileId,
+          name: file.name,
+          url: src,
+          thumbnailUrl,
+          serverUrl,
+          transcription: [], // Empty for now
+          width: metadata.width,
+          height: metadata.height,
+          duration: metadata.durationInSeconds || 20,
+        };
+
+        // Add to source files immediately
+        setSourceFiles((prev) => [...prev, newSourceFile]);
+        setActiveFileId(fileId);
+        setNativeDimensions({ width: metadata.width, height: metadata.height });
+
+        // Start transcription in background
         if (serverUrl) {
           setIsTranscribing(true);
           try {
@@ -83,56 +126,48 @@ export const useVideoUpload = () => {
             }
 
             const realTranscription = await transcribeRes.json();
-            setTranscription(realTranscription);
+            setSourceFiles((prev) =>
+              prev.map((f) =>
+                f.id === fileId
+                  ? { ...f, transcription: realTranscription }
+                  : f,
+              ),
+            );
           } catch (err) {
             console.error("Transcription failed, falling back to mock:", err);
-            setTranscription(
-              generateMockTranscription(metadata.durationInSeconds ?? 20),
+            const mockTranscription = generateMockTranscription(
+              metadata.durationInSeconds ?? 20,
+            );
+            setSourceFiles((prev) =>
+              prev.map((f) =>
+                f.id === fileId
+                  ? { ...f, transcription: mockTranscription }
+                  : f,
+              ),
             );
           } finally {
             setIsTranscribing(false);
           }
         } else {
-          setTranscription(
-            generateMockTranscription(metadata.durationInSeconds ?? 20),
+          const mockTranscription = generateMockTranscription(
+            metadata.durationInSeconds ?? 20,
+          );
+          setSourceFiles((prev) =>
+            prev.map((f) =>
+              f.id === fileId ? { ...f, transcription: mockTranscription } : f,
+            ),
           );
         }
-
-        setClips([
-          {
-            id: "initial-clip",
-            sourceStart: 0,
-            sourceEnd: metadata.durationInSeconds ?? 20,
-            logicalStart: 0,
-            logicalEnd: metadata.durationInSeconds ?? 20,
-          },
-        ]);
       } catch (err) {
         console.error("Critical error loading video metadata:", err);
-        setNativeDimensions({ width: 1280, height: 720 });
-        setVideoSrc(src);
-        setServerVideoUrl(serverUrl);
-        setTranscription(generateMockTranscription(20));
-        setClips([
-          {
-            id: "initial-clip",
-            sourceStart: 0,
-            sourceEnd: 20,
-            logicalStart: 0,
-            logicalEnd: 20,
-          },
-        ]);
       }
     },
     [
-      videoSrc,
-      setVideoSrc,
-      setServerVideoUrl,
-      setTranscription,
-      setClips,
+      setSourceFiles,
       setNativeDimensions,
       setIsUnsupportedCodec,
       setIsTranscribing,
+      setActiveFileId,
     ],
   );
 

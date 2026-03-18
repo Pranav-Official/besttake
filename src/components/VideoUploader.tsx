@@ -62,20 +62,24 @@ export const VideoUploader: React.FC<VideoUploaderProps> = ({
       setIsDragging(false);
       if (disabled || uploading) return;
 
-      const file = e.dataTransfer.files[0];
-      if (file && file.type.startsWith("video/")) {
-        uploadFile(file);
-      }
+      const files = Array.from(e.dataTransfer.files);
+      files.forEach((file) => {
+        if (file.type.startsWith("video/")) {
+          uploadFile(file);
+        }
+      });
     },
     [disabled, uploading, uploadFile],
   );
 
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file && file.type.startsWith("video/")) {
-        uploadFile(file);
-      }
+      const files = Array.from(e.target.files || []);
+      files.forEach((file) => {
+        if (file.type.startsWith("video/")) {
+          uploadFile(file);
+        }
+      });
     },
     [uploadFile],
   );
@@ -96,6 +100,7 @@ export const VideoUploader: React.FC<VideoUploaderProps> = ({
       <input
         type="file"
         accept="video/*"
+        multiple
         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
         onChange={handleFileSelect}
         disabled={disabled || uploading}

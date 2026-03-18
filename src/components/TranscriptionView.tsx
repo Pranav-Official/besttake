@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useEffect, useState } from "react";
 import { WordTranscription, Clip } from "../types/constants";
 import { cn } from "../lib/utils";
 import { Badge } from "./Badge";
+import { useEditor } from "../context/EditorContext";
 
 interface TranscriptionViewProps {
   transcription: WordTranscription[];
@@ -29,6 +30,7 @@ export const TranscriptionView: React.FC<TranscriptionViewProps> = ({
   onSelectionChange,
   className,
 }) => {
+  const { sourceFiles } = useEditor();
   const containerRef = useRef<HTMLDivElement>(null);
   const activeWordRef = useRef<HTMLSpanElement>(null);
 
@@ -39,37 +41,20 @@ export const TranscriptionView: React.FC<TranscriptionViewProps> = ({
     y: number;
   } | null>(null);
 
-  // Derived: Rendered words in the order of clips
-  const renderedItems = useMemo(() => {
-    const items: {
-      word: WordTranscription;
-      clipId: string;
-      uniqueId: string;
-    }[] = [];
-
-    clips.forEach((clip) => {
-      const lStart = clip.logicalStart ?? clip.sourceStart;
-      const lEnd = clip.logicalEnd ?? clip.sourceEnd;
-
-      const wordsInClip = transcription.filter(
-        (w) => w.start >= lStart - 0.01 && w.end <= lEnd + 0.01,
-      );
-      wordsInClip.forEach((word) => {
-        items.push({
-          word,
-          clipId: clip.id,
-          uniqueId: `${clip.id}-${word.id}`,
-        });
-      });
+  // Check for pending transcriptions
+  const pendingClips = useMemo(() => {
+    return clips.filter((clip) => {
+      const sourceFile = sourceFiles.find((f) => f.id === clip.fileId);
+      return sourceFile && sourceFile.transcription.length === 0;
     });
+  }, [clips, sourceFiles]);
 
-    return items;
-  }, [transcription, clips]);
+  const renderedItems = transcription;
 
   const activeWordIndex = useMemo(() => {
     for (let i = 0; i < renderedItems.length; i++) {
       const item = renderedItems[i];
-      if (currentTime >= item.word.start && currentTime <= item.word.end) {
+      if (currentTime >= item.start && currentTime <= item.end) {
         return i;
       }
     }
@@ -84,13 +69,13 @@ export const TranscriptionView: React.FC<TranscriptionViewProps> = ({
   };
 
   const getWordRange = (startId: string, endId: string) => {
-    const startIndex = transcription.findIndex((w) => w.id === startId);
-    const endIndex = transcription.findIndex((w) => w.id === endId);
+    const startIndex = renderedItems.findIndex((w) => w.id === startId);
+    const endIndex = renderedItems.findIndex((w) => w.id === endId);
     if (startIndex === -1 || endIndex === -1) return [];
 
     const [min, max] =
       startIndex < endIndex ? [startIndex, endIndex] : [endIndex, startIndex];
-    return transcription.slice(min, max + 1).map((w) => w.id);
+    return renderedItems.slice(min, max + 1).map((w) => w.id);
   };
 
   const handleMouseDown = (id: string, shiftKey: boolean) => {
@@ -196,17 +181,17 @@ export const TranscriptionView: React.FC<TranscriptionViewProps> = ({
               <p>No text in timeline.</p>
             </div>
           ) : (
-            renderedItems.map(({ word, clipId, uniqueId }, index) => {
+            renderedItems.map((word, index) => {
               const isActive = index === activeWordIndex;
               const isSelected = selectedWordIds.has(word.id);
 
               // Find if this is the end of a clip
               const isEndOfClip =
                 index < renderedItems.length - 1 &&
-                renderedItems[index + 1].clipId !== clipId;
+                renderedItems[index + 1].clipId !== word.clipId;
 
               return (
-                <span key={uniqueId}>
+                <span key={word.id}>
                   <span
                     ref={isActive ? activeWordRef : null}
                     tabIndex={0}
@@ -238,7 +223,7 @@ export const TranscriptionView: React.FC<TranscriptionViewProps> = ({
                           ? "bg-[#9cb2d7] text-[#011626] font-black scale-105 shadow-[0_0_20px_rgba(156,178,215,0.4)] z-10"
                           : "text-[#f1f2f3] font-medium opacity-100",
                     )}
-                    title={`${word.start.toFixed(2)}s - ${word.end.toFixed(2)}s (Clip: ${clipId})`}
+                    title={`${word.start.toFixed(2)}s - ${word.end.toFixed(2)}s (Clip: ${word.clipId})`}
                   >
                     {word.text}
                     {!isSelected && (
@@ -254,6 +239,20 @@ export const TranscriptionView: React.FC<TranscriptionViewProps> = ({
                 </span>
               );
             })
+          )}
+
+          {pendingClips.length > 0 && (
+            <div className="mt-12 p-6 border-2 border-dashed border-[#1d417c] rounded-xl bg-[#1d417c]/10 flex flex-col items-center gap-4 text-center animate-pulse">
+              <div className="w-10 h-10 border-4 border-[#9cb2d7] border-t-transparent rounded-full animate-spin" />
+              <div>
+                <h3 className="text-sm font-bold text-[#9cb2d7] uppercase tracking-wider">
+                  Transcribing {pendingClips.length} clips...
+                </h3>
+                <p className="text-xs text-[#9cb2d7]/50 mt-1">
+                  Text will appear here as soon as processing is complete.
+                </p>
+              </div>
+            </div>
           )}
         </div>
 
