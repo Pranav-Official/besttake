@@ -34,6 +34,7 @@ export const EditorLayout = () => {
     selectedWordIds,
     setSelectedWordIds,
     activeFileId,
+    activeTimelineId,
   } = useEditor();
 
   const { onDeleteWords, onSplitAtPlayhead } = useEditorActions();
@@ -44,26 +45,24 @@ export const EditorLayout = () => {
     noiseThreshold: number,
     minDuration: number,
   ) => {
-    const activeFile =
-      sourceFiles.find((f) => f.id === activeFileId) || sourceFiles[0];
-    const targetVideoUrl = activeFile?.serverUrl || serverVideoUrl;
+    const activeFile = sourceFiles.find((f) => f.id === activeFileId);
 
     console.log("onTrimSilences called with:", {
       noiseThreshold,
       minDuration,
-      targetVideoUrl,
-      activeFileId: activeFile?.id,
+      serverVideoUrl,
+      activeFileId,
     });
 
-    if (!targetVideoUrl || !activeFile) {
+    if (!serverVideoUrl || !activeFile) {
       console.warn(
-        "Returning early from onTrimSilences: missing targetVideoUrl or activeFile",
+        "Returning early from onTrimSilences: missing serverVideoUrl or activeFile",
       );
       return;
     }
     try {
       const audibleParts = await trimSilences({
-        serverVideoUrl: targetVideoUrl,
+        serverVideoUrl,
         noiseThreshold,
         minDuration,
       });
@@ -145,6 +144,7 @@ export const EditorLayout = () => {
       </main>
 
       <TimelineEditor
+        key={activeTimelineId || "default"}
         transcription={transcription}
         clips={clips}
         onClipsChange={setClips}

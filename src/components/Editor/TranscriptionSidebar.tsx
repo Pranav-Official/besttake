@@ -21,6 +21,7 @@ export const TranscriptionSidebar = () => {
     setSelectedWordIds,
     timelines,
     addTimeline,
+    activeTimelineId,
     sourceFiles,
     paddingEnabled,
     paddingDuration,
@@ -58,7 +59,7 @@ export const TranscriptionSidebar = () => {
       const res = await fetch("/api/besttake", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, transcription }),
       });
       const data = await res.json();
       if (!data.cleanText) throw new Error("No clean text returned");
@@ -120,6 +121,7 @@ export const TranscriptionSidebar = () => {
   return (
     <section className="w-2/5 flex flex-col bg-[#022540]">
       <TranscriptionView
+        key={activeTimelineId}
         transcription={transcription}
         clips={clips}
         currentTime={currentFrame / VIDEO_FPS}
