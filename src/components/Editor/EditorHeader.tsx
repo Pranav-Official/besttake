@@ -81,12 +81,6 @@ export const EditorHeader = () => {
             >
               Editor
             </button>
-            <button className="hover:text-[#f1f2f3] transition-colors">
-              View
-            </button>
-            <button className="hover:text-[#f1f2f3] transition-colors">
-              Export
-            </button>
           </nav>
         </div>
         <div className="flex items-center gap-4">
