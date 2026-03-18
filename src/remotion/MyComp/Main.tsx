@@ -22,9 +22,10 @@ export const Main = ({
           if (!sourceFile) return null;
 
           const duration = clip.sourceEnd - clip.sourceStart;
-          const resolvedVideoSrc = sourceFile.url.startsWith("/")
-            ? staticFile(sourceFile.url)
-            : sourceFile.url;
+          const targetUrl = sourceFile.serverUrl || sourceFile.url;
+          const resolvedVideoSrc = targetUrl.startsWith("/")
+            ? staticFile(targetUrl)
+            : targetUrl;
 
           return (
             <Series.Sequence
