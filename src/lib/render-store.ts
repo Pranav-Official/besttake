@@ -7,13 +7,19 @@ interface RenderProgress {
   done: boolean;
 }
 
+declare global {
+  // eslint-disable-next-line no-var
+  var _renderStore: Map<string, RenderProgress> | undefined;
+  // eslint-disable-next-line no-var
+  var _renderStoreCleanup: NodeJS.Timeout | undefined;
+}
+
 const renderStore = new Map<string, RenderProgress>();
 
 // Clear old renders every hour
-if (!(global as any)._renderStoreCleanup) {
-  (global as any)._renderStoreCleanup = setInterval(
+if (!globalThis._renderStoreCleanup) {
+  globalThis._renderStoreCleanup = setInterval(
     () => {
-      const now = Date.now();
       // In a real app we'd have timestamps, let's just clear for now
       // But since it's local dev, it's fine.
     },
@@ -22,8 +28,8 @@ if (!(global as any)._renderStoreCleanup) {
 }
 
 export const getRenderStore = () => {
-  if (!(global as any)._renderStore) {
-    (global as any)._renderStore = renderStore;
+  if (!globalThis._renderStore) {
+    globalThis._renderStore = renderStore;
   }
-  return (global as any)._renderStore as Map<string, RenderProgress>;
+  return globalThis._renderStore;
 };

@@ -2,6 +2,7 @@ import js from "@eslint/js";
 import nextPlugin from "@next/eslint-plugin-next";
 import remotion from "@remotion/eslint-plugin";
 import tseslint from "typescript-eslint";
+import reactHooks from "eslint-plugin-react-hooks";
 
 // Build Next.js recommended rules and an "off" map for overrides
 const nextRecommended = nextPlugin.configs.recommended ?? { rules: {} };
@@ -27,12 +28,16 @@ export default [
   js.configs.recommended,
   // TypeScript recommended (non type-checked for speed/simplicity)
   ...tseslint.configs.recommended,
-  // Next.js recommended rules applied to app code
+  // Next.js and React Hooks recommended rules applied to app code
   {
     files: ["**/*.{js,jsx,ts,tsx}"],
-    plugins: { "@next/next": nextPlugin },
+    plugins: {
+      "@next/next": nextPlugin,
+      "react-hooks": reactHooks,
+    },
     rules: {
       ...nextRecommendedRules,
+      ...reactHooks.configs.recommended.rules,
     },
   },
   // Remotion rules applied only to remotion files

@@ -8,7 +8,7 @@ import { useEffect, useRef } from "react";
 export const usePlayerFrame = (
   playerRef: React.RefObject<PlayerRef | null>,
   onFrame: (frame: number) => void,
-  dependencies: any[] = [],
+  dependencies: unknown[] = [],
 ) => {
   const lastFrameRef = useRef(0);
 
@@ -16,9 +16,9 @@ export const usePlayerFrame = (
     const player = playerRef.current;
     if (!player) return;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const onFrameUpdate = (e: any) => {
-      const newFrame = e.detail.frame;
+    const onFrameUpdate = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      const newFrame = detail.frame;
       const isPlaying = playerRef.current?.isPlaying();
 
       if (isPlaying) {

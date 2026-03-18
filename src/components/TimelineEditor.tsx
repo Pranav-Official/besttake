@@ -122,7 +122,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
         textPreview,
       };
     });
-  }, [transcription, clips, trimmingState, reorderState, zoom]);
+  }, [transcription, clips, trimmingState, reorderState]);
 
   const totalEditedDuration = useMemo(() => {
     if (processedClips.length === 0) return 0;
@@ -147,7 +147,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
       const scrollLeft = playheadPos - container.clientWidth / 2;
       container.scrollLeft = scrollLeft;
     }
-  }, [zoom]);
+  }, [zoom, currentFrame, fps]);
 
   // Keep playhead in view while playing
   useEffect(() => {
@@ -255,7 +255,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [reorderState?.draggedIndex, zoom, onClipsChange]);
+  }, [reorderState, zoom, onClipsChange]);
 
   const handleTrimStart = (
     e: React.MouseEvent,

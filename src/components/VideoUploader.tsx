@@ -29,29 +29,32 @@ export const VideoUploader: React.FC<VideoUploaderProps> = ({
     setIsDragging(false);
   }, []);
 
-  const uploadFile = async (file: File) => {
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
+  const uploadFile = useCallback(
+    async (file: File) => {
+      setUploading(true);
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
 
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
+        const response = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
 
-      const data = await response.json();
-      const localUrl = URL.createObjectURL(file);
-      onUpload(localUrl, file, data.url);
-    } catch (err) {
-      console.error("Upload failed:", err);
-      // Fallback to just local URL if server upload fails
-      const localUrl = URL.createObjectURL(file);
-      onUpload(localUrl, file);
-    } finally {
-      setUploading(false);
-    }
-  };
+        const data = await response.json();
+        const localUrl = URL.createObjectURL(file);
+        onUpload(localUrl, file, data.url);
+      } catch (err) {
+        console.error("Upload failed:", err);
+        // Fallback to just local URL if server upload fails
+        const localUrl = URL.createObjectURL(file);
+        onUpload(localUrl, file);
+      } finally {
+        setUploading(false);
+      }
+    },
+    [onUpload],
+  );
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -64,7 +67,7 @@ export const VideoUploader: React.FC<VideoUploaderProps> = ({
         uploadFile(file);
       }
     },
-    [disabled, uploading, onUpload],
+    [disabled, uploading, uploadFile],
   );
 
   const handleFileSelect = useCallback(
@@ -74,7 +77,7 @@ export const VideoUploader: React.FC<VideoUploaderProps> = ({
         uploadFile(file);
       }
     },
-    [onUpload],
+    [uploadFile],
   );
 
   return (
