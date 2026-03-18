@@ -16,6 +16,9 @@ export const EditorHeader = () => {
     sourceFiles,
     clips,
     dimensions,
+    timelines,
+    activeTimelineId,
+    setActiveTimelineId,
   } = useEditor();
 
   const {
@@ -84,6 +87,23 @@ export const EditorHeader = () => {
           </nav>
         </div>
         <div className="flex items-center gap-4">
+          {view === "editor" && timelines.length > 1 && (
+            <div className="flex items-center gap-2 mr-4 bg-[#1d417c]/30 p-1 rounded-lg">
+              {timelines.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setActiveTimelineId(t.id)}
+                  className={`text-xs px-3 py-1 rounded-md transition-colors ${
+                    activeTimelineId === t.id
+                      ? "bg-[#9cb2d7] text-[#011626] font-bold"
+                      : "text-[#9cb2d7] hover:bg-[#1d417c]/50"
+                  }`}
+                >
+                  {t.name}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="w-32">
             <Dropdown
               options={ratioOptions}

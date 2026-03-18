@@ -15,6 +15,8 @@ interface TranscriptionViewProps {
   deletedWordIds: Set<string>;
   selectedWordIds: Set<string>;
   onSelectionChange: (ids: Set<string>) => void;
+  onBestTake?: () => void;
+  isProcessingBestTake?: boolean;
   className?: string;
 }
 
@@ -28,6 +30,8 @@ export const TranscriptionView: React.FC<TranscriptionViewProps> = ({
   onSplitClip,
   selectedWordIds,
   onSelectionChange,
+  onBestTake,
+  isProcessingBestTake,
   className,
 }) => {
   const { sourceFiles } = useEditor();
@@ -159,7 +163,28 @@ export const TranscriptionView: React.FC<TranscriptionViewProps> = ({
             Transcript Editor
           </h2>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          {onBestTake && (
+            <button
+              onClick={onBestTake}
+              disabled={isProcessingBestTake || transcription.length === 0}
+              className={cn(
+                "text-xs font-bold px-3 py-1 rounded-full transition-colors flex items-center gap-1",
+                isProcessingBestTake
+                  ? "bg-[#9cb2d7]/20 text-[#9cb2d7] cursor-wait"
+                  : "bg-gradient-to-r from-indigo-500 to-purple-500 text-white hover:opacity-90 shadow-lg",
+              )}
+            >
+              {isProcessingBestTake ? (
+                <>
+                  <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>✨ Best Take</>
+              )}
+            </button>
+          )}
           <Badge
             variant="accent"
             className="bg-[#7ead70]/10 border-[#7ead70]/20 text-[#7ead70]"

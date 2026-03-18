@@ -15,8 +15,9 @@ import {
   VIDEO_FPS,
   AspectRatio,
   SourceFile,
+  Timeline,
 } from "../types/constants";
-import { useHistory } from "../hooks/use-history";
+import { useTimelineHistory } from "../hooks/use-timeline-history";
 
 export type EditorView = "management" | "editor";
 
@@ -27,7 +28,11 @@ interface EditorContextType {
   videoSrc: string | undefined; // Still used for preview/single video compatibility if needed
   serverVideoUrl: string | undefined;
   transcription: WordTranscription[]; // This will now be the CONCATENATED transcription in editor mode
+
+  timelines: Timeline[];
+  activeTimelineId: string;
   clips: Clip[];
+
   currentFrame: number;
   selectedRatio: AspectRatio;
   nativeDimensions: { width: number; height: number };
@@ -53,10 +58,12 @@ interface EditorContextType {
   setSourceFiles: (
     files: SourceFile[] | ((prev: SourceFile[]) => SourceFile[]),
   ) => void;
-  setVideoSrc: (src: string | undefined) => void;
-  setServerVideoUrl: (url: string | undefined) => void;
   setTranscription: (t: WordTranscription[]) => void;
+
+  setActiveTimelineId: (id: string) => void;
+  addTimeline: (timeline: Timeline) => void;
   setClips: (c: Clip[] | ((prev: Clip[]) => Clip[])) => void;
+
   setCurrentFrame: (frame: number) => void;
   setSelectedRatio: (ratio: AspectRatio) => void;
   setNativeDimensions: (dim: { width: number; height: number }) => void;
@@ -79,10 +86,6 @@ const EditorContext = createContext<EditorContextType | undefined>(undefined);
 export const EditorProvider = ({ children }: { children: ReactNode }) => {
   const [view, setView] = useState<EditorView>("management");
   const [sourceFiles, setSourceFiles] = useState<SourceFile[]>([]);
-  const [videoSrc, setVideoSrc] = useState<string | undefined>(undefined);
-  const [serverVideoUrl, setServerVideoUrl] = useState<string | undefined>(
-    undefined,
-  );
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isUnsupportedCodec, setIsUnsupportedCodec] = useState(false);
   const [paddingEnabled, setPaddingEnabled] = useState(true);
@@ -93,13 +96,17 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
 
   const {
-    state: clips,
-    set: setClips,
+    timelines,
+    activeTimelineId,
+    setActiveTimelineId,
+    addTimeline,
+    clips,
+    setClips,
     undo,
     redo,
     canUndo,
     canRedo,
-  } = useHistory<Clip[]>([]);
+  } = useTimelineHistory([{ id: "original", name: "Original", clips: [] }]);
 
   const [currentFrame, setCurrentFrame] = useState(0);
   const lastFrameRef = useRef(0);
@@ -112,6 +119,14 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
 
   const playerRef = useRef<PlayerRef>(null);
 
+  // Derive active file and related sources (Pattern 1: Derive State)
+  const activeFile = useMemo(
+    () => sourceFiles.find((f) => f.id === activeFileId),
+    [activeFileId, sourceFiles],
+  );
+  const videoSrc = activeFile?.url;
+  const serverVideoUrl = activeFile?.serverUrl;
+
   // Derived: unifiedTranscription
   const unifiedTranscription = useMemo(() => {
     if (view === "management") return [];
@@ -119,7 +134,7 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
     const result: WordTranscription[] = [];
     let accumulatedTime = 0;
 
-    clips.forEach((clip, clipIndex) => {
+    clips.forEach((clip) => {
       const sourceFile = sourceFiles.find((f) => f.id === clip.fileId);
       if (!sourceFile) return;
 
@@ -212,6 +227,8 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
     videoSrc,
     serverVideoUrl,
     transcription: unifiedTranscription,
+    timelines,
+    activeTimelineId,
     clips,
     currentFrame,
     selectedRatio,
@@ -230,9 +247,9 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
     deletedWordIds,
     setView,
     setSourceFiles,
-    setVideoSrc,
-    setServerVideoUrl,
     setTranscription: () => {}, // No-op for now, needs refactor if used
+    setActiveTimelineId,
+    addTimeline,
     setClips,
     setCurrentFrame,
     setSelectedRatio,

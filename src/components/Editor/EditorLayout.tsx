@@ -33,6 +33,7 @@ export const EditorLayout = () => {
     setPaddingDuration,
     selectedWordIds,
     setSelectedWordIds,
+    activeFileId,
   } = useEditor();
 
   const { onDeleteWords, onSplitAtPlayhead } = useEditorActions();
@@ -43,22 +44,37 @@ export const EditorLayout = () => {
     noiseThreshold: number,
     minDuration: number,
   ) => {
-    if (!serverVideoUrl || sourceFiles.length === 0) return;
+    const activeFile =
+      sourceFiles.find((f) => f.id === activeFileId) || sourceFiles[0];
+    const targetVideoUrl = activeFile?.serverUrl || serverVideoUrl;
+
+    console.log("onTrimSilences called with:", {
+      noiseThreshold,
+      minDuration,
+      targetVideoUrl,
+      activeFileId: activeFile?.id,
+    });
+
+    if (!targetVideoUrl || !activeFile) {
+      console.warn(
+        "Returning early from onTrimSilences: missing targetVideoUrl or activeFile",
+      );
+      return;
+    }
     try {
       const audibleParts = await trimSilences({
-        serverVideoUrl,
+        serverVideoUrl: targetVideoUrl,
         noiseThreshold,
         minDuration,
       });
-      const firstFileId = sourceFiles[0].id;
       const nextClips = audibleParts.map((part, i) => {
         const finalPadding = paddingEnabled ? paddingDuration : 0;
         return {
           id: `audible-${i}-${Date.now()}`,
-          fileId: firstFileId,
+          fileId: activeFile.id,
           sourceStart: Math.max(0, part.startInSeconds - finalPadding),
           sourceEnd: Math.min(
-            transcription[transcription.length - 1]?.end || 10000,
+            activeFile.duration || 10000,
             part.endInSeconds + finalPadding,
           ),
           logicalStart: part.startInSeconds,
