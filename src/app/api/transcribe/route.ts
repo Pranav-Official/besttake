@@ -30,12 +30,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Call the Python script in the background
-    const pythonInterpreter = path.join(
-      process.cwd(),
-      "venv",
-      "Scripts",
-      "python.exe",
-    );
+    const pythonInterpreter =
+      process.platform === "win32"
+        ? path.join(process.cwd(), "venv", "Scripts", "python.exe")
+        : path.join(process.cwd(), "venv", "bin", "python");
     const runnerScript = path.join(
       process.cwd(),
       "src",
@@ -63,10 +61,12 @@ export async function POST(request: NextRequest) {
 
       pyProcess.on("close", (code) => {
         if (code !== 0) {
-          console.error(`Transcription failed with code ${code}: ${stderr}`);
+          console.error(`Transcription failed with code ${code}:`);
+          console.error("stdout:", stdout);
+          console.error("stderr:", stderr);
           resolve(
             NextResponse.json(
-              { error: "Transcription failed", details: stderr },
+              { error: "Transcription failed", details: stderr || stdout },
               { status: 500 },
             ),
           );
