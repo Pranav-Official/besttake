@@ -5,12 +5,29 @@ import { FileBin } from "./FileBin";
 import { ClipOrdering } from "./ClipOrdering";
 import { Player } from "@remotion/player";
 import { Main } from "../../../remotion/MyComp/Main";
-import { VIDEO_FPS } from "../../../types/constants";
+import { VIDEO_FPS, SourceFile } from "../../../types/constants";
 
 export const ClipManagement = () => {
-  const { sourceFiles, activeFileId, dimensions } = useEditor();
+  const { sourceFiles, activeFileId, activeLibraryItem, dimensions } =
+    useEditor();
 
   const activeFile = sourceFiles.find((f) => f.id === activeFileId);
+
+  // Use either activeFile (project) or activeLibraryItem (server library) for preview
+  const previewFile =
+    activeFile ||
+    (activeLibraryItem
+      ? {
+          id: activeLibraryItem.filename,
+          name: activeLibraryItem.name,
+          url: activeLibraryItem.url,
+          serverUrl: activeLibraryItem.url,
+          duration: 300, // Default duration for preview if unknown
+          width: 1920,
+          height: 1080,
+          transcription: [],
+        }
+      : null);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-[#011626]">
@@ -24,27 +41,29 @@ export const ClipManagement = () => {
         <div className="w-[400px] border-l border-[#1d417c] bg-black/20 flex flex-col shrink-0">
           <div className="p-4 border-b border-[#1d417c] shrink-0">
             <h2 className="text-xs font-bold uppercase tracking-wider text-[#9cb2d7]">
-              Preview
+              Preview {activeLibraryItem && !activeFile && "(Library)"}
             </h2>
           </div>
           <div className="flex-1 flex items-center justify-center bg-black p-4">
-            {activeFile ? (
+            {previewFile ? (
               <Player
-                key={activeFile.id}
+                key={previewFile.id}
                 component={Main}
                 inputProps={{
                   title: "Preview",
-                  sourceFiles, // Pass sourceFiles here
+                  sourceFiles: activeFile
+                    ? sourceFiles
+                    : ([previewFile] as SourceFile[]),
                   clips: [
                     {
                       id: "preview",
-                      fileId: activeFile.id,
+                      fileId: previewFile.id,
                       sourceStart: 0,
-                      sourceEnd: activeFile.duration,
+                      sourceEnd: previewFile.duration,
                     },
                   ],
                 }}
-                durationInFrames={Math.ceil(activeFile.duration * VIDEO_FPS)}
+                durationInFrames={Math.ceil(previewFile.duration * VIDEO_FPS)}
                 fps={VIDEO_FPS}
                 compositionHeight={dimensions.height}
                 compositionWidth={dimensions.width}
@@ -57,14 +76,14 @@ export const ClipManagement = () => {
               </div>
             )}
           </div>
-          {activeFile && (
+          {previewFile && (
             <div className="p-4 bg-[#022540] border-t border-[#1d417c]">
               <p className="text-xs font-bold text-white truncate mb-1">
-                {activeFile.name}
+                {previewFile.name}
               </p>
               <p className="text-[10px] text-[#9cb2d7] uppercase font-mono">
-                {activeFile.width}x{activeFile.height} •{" "}
-                {activeFile.duration.toFixed(2)}s
+                {previewFile.width}x{previewFile.height} •{" "}
+                {previewFile.duration.toFixed(2)}s
               </p>
             </div>
           )}

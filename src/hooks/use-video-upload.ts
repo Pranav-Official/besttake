@@ -33,6 +33,38 @@ const generateThumbnail = (videoUrl: string): Promise<string> => {
   });
 };
 
+const fetchMetadata = async (videoUrl: string) => {
+  try {
+    const meta = await parseMedia({
+      src: videoUrl,
+      fields: { width: true, height: true, durationInSeconds: true },
+    });
+    return {
+      width: Math.max(1, meta.width),
+      height: Math.max(1, meta.height),
+      durationInSeconds: meta.durationInSeconds,
+    };
+  } catch {
+    return new Promise<{
+      width: number;
+      height: number;
+      durationInSeconds: number;
+    }>((resolve, reject) => {
+      const video = document.createElement("video");
+      video.preload = "metadata";
+      video.onloadedmetadata = () => {
+        resolve({
+          width: Math.max(1, video.videoWidth),
+          height: Math.max(1, video.videoHeight),
+          durationInSeconds: video.duration || 1,
+        });
+      };
+      video.onerror = () => reject(new Error("Manual metadata load failed"));
+      video.src = videoUrl;
+    });
+  }
+};
+
 /**
  * A hook that manages video uploading and metadata extraction.
  */
@@ -45,41 +77,8 @@ export const useVideoUpload = () => {
     setActiveFileId,
   } = useEditor();
 
-  const onUpload = useCallback(
-    async (src: string, file: File, serverUrl?: string) => {
-      const fetchMetadata = async (videoUrl: string) => {
-        try {
-          const meta = await parseMedia({
-            src: videoUrl,
-            fields: { width: true, height: true, durationInSeconds: true },
-          });
-          return {
-            width: Math.max(1, meta.width),
-            height: Math.max(1, meta.height),
-            durationInSeconds: meta.durationInSeconds,
-          };
-        } catch {
-          return new Promise<{
-            width: number;
-            height: number;
-            durationInSeconds: number;
-          }>((resolve, reject) => {
-            const video = document.createElement("video");
-            video.preload = "metadata";
-            video.onloadedmetadata = () => {
-              resolve({
-                width: Math.max(1, video.videoWidth),
-                height: Math.max(1, video.videoHeight),
-                durationInSeconds: video.duration || 1,
-              });
-            };
-            video.onerror = () =>
-              reject(new Error("Manual metadata load failed"));
-            video.src = videoUrl;
-          });
-        }
-      };
-
+  const handleSourceFileAdd = useCallback(
+    async (src: string, name: string, serverUrl?: string) => {
       try {
         setIsUnsupportedCodec(false);
         const metadata = await fetchMetadata(src);
@@ -89,29 +88,24 @@ export const useVideoUpload = () => {
         }
 
         const fileId = `file-${Date.now()}`;
-
-        // Generate thumbnail
         const thumbnailUrl = await generateThumbnail(src);
 
-        // Create the file object without transcription first
         const newSourceFile: SourceFile = {
           id: fileId,
-          name: file.name,
+          name: name,
           url: src,
           thumbnailUrl,
           serverUrl,
-          transcription: [], // Empty for now
+          transcription: [],
           width: metadata.width,
           height: metadata.height,
           duration: metadata.durationInSeconds || 20,
         };
 
-        // Add to source files immediately
         setSourceFiles((prev) => [...prev, newSourceFile]);
         setActiveFileId(fileId);
         setNativeDimensions({ width: metadata.width, height: metadata.height });
 
-        // Start transcription in background
         if (serverUrl) {
           setIsTranscribing(true);
           try {
@@ -121,9 +115,7 @@ export const useVideoUpload = () => {
               body: JSON.stringify({ videoSrc: serverUrl }),
             });
 
-            if (!transcribeRes.ok) {
-              throw new Error("Transcription failed");
-            }
+            if (!transcribeRes.ok) throw new Error("Transcription failed");
 
             const realTranscription = await transcribeRes.json();
             setSourceFiles((prev) =>
@@ -171,5 +163,22 @@ export const useVideoUpload = () => {
     ],
   );
 
-  return { onUpload };
+  const onUpload = useCallback(
+    async (src: string, file: File, serverUrl?: string) => {
+      await handleSourceFileAdd(src, file.name, serverUrl);
+    },
+    [handleSourceFileAdd],
+  );
+
+  const onLibrarySelect = useCallback(
+    async (item: { name: string; url: string; filename: string }) => {
+      await handleSourceFileAdd(item.url, item.name, item.url);
+    },
+    [handleSourceFileAdd],
+  );
+
+  return {
+    onUpload,
+    onLibrarySelect,
+  };
 };

@@ -6,9 +6,10 @@ import fs from "fs";
 /**
  * Video transcription endpoint (POST /api/transcribe)
  * Calls a Python script (using Whisper) to generate word-level timestamps for a video.
+ * Caches the result in a .json file next to the video.
  *
  * Body:
- * - videoSrc: string (Path to the video file in public/uploads)
+ * - videoSrc: string (Path to the video file in public/uploads, e.g., "/uploads/file.mp4")
  */
 export async function POST(request: NextRequest) {
   try {
@@ -21,6 +22,7 @@ export async function POST(request: NextRequest) {
 
     // Resolve path: /uploads/... is inside public/uploads/...
     const absoluteVideoPath = path.join(process.cwd(), "public", videoSrc);
+    const transcriptionCachePath = `${absoluteVideoPath}.json`;
 
     if (!fs.existsSync(absoluteVideoPath)) {
       return NextResponse.json(
@@ -29,7 +31,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Call the Python script in the background
+    // 1. Check if transcription is already cached
+    if (fs.existsSync(transcriptionCachePath)) {
+      try {
+        const cachedData = await fs.promises.readFile(
+          transcriptionCachePath,
+          "utf-8",
+        );
+        return NextResponse.json(JSON.parse(cachedData));
+      } catch (err) {
+        console.error("Failed to read transcription cache:", err);
+        // Fall through to run transcription if cache is invalid
+      }
+    }
+
+    // 2. Call the Python script in the background
     const pythonInterpreter =
       process.platform === "win32"
         ? path.join(process.cwd(), "venv", "Scripts", "python.exe")
@@ -59,7 +75,7 @@ export async function POST(request: NextRequest) {
         stderr += data.toString();
       });
 
-      pyProcess.on("close", (code) => {
+      pyProcess.on("close", async (code) => {
         if (code !== 0) {
           console.error(`Transcription failed with code ${code}:`);
           console.error("stdout:", stdout);
@@ -73,6 +89,18 @@ export async function POST(request: NextRequest) {
         } else {
           try {
             const transcription = JSON.parse(stdout);
+
+            // 3. Save to cache
+            try {
+              await fs.promises.writeFile(
+                transcriptionCachePath,
+                JSON.stringify(transcription, null, 2),
+                "utf-8",
+              );
+            } catch (cacheErr) {
+              console.error("Failed to save transcription cache:", cacheErr);
+            }
+
             resolve(NextResponse.json(transcription));
           } catch {
             console.error("Failed to parse transcription output:", stdout);

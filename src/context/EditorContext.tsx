@@ -43,6 +43,12 @@ interface EditorContextType {
   paddingDuration: number;
   selectedWordIds: Set<string>;
   activeFileId: string | null;
+  activeLibraryItem: {
+    id: string;
+    name: string;
+    url: string;
+    filename: string;
+  } | null;
 
   // Ref
   playerRef: React.RefObject<PlayerRef | null>;
@@ -78,8 +84,12 @@ interface EditorContextType {
   setPaddingDuration: (val: number) => void;
   setSelectedWordIds: (ids: Set<string>) => void;
   setActiveFileId: (id: string | null) => void;
+  setActiveLibraryItem: (
+    item: { id: string; name: string; url: string; filename: string } | null,
+  ) => void;
 
   // History
+
   undo: () => void;
   redo: () => void;
   canUndo: boolean;
@@ -99,6 +109,12 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
     new Set(),
   );
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
+  const [activeLibraryItem, setActiveLibraryItem] = useState<{
+    id: string;
+    name: string;
+    url: string;
+    filename: string;
+  } | null>(null);
 
   const {
     timelines,
@@ -247,6 +263,7 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
     paddingDuration,
     selectedWordIds,
     activeFileId,
+    activeLibraryItem,
     playerRef,
     lastFrameRef,
     dimensions,
@@ -272,6 +289,7 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
     setPaddingDuration,
     setSelectedWordIds,
     setActiveFileId,
+    setActiveLibraryItem,
     undo,
     redo,
     canUndo,
