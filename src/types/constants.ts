@@ -31,6 +31,18 @@ export const ClipSchema = z.object({
   logicalEnd: z.number().optional(), // in seconds (unpadded)
 });
 
+export const ProjectSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  lastModified: z.number(),
+  sourceFiles: z.array(SourceFileSchema),
+  clips: z.array(ClipSchema),
+  aspectRatio: z.enum(["original", "16:9", "9:16", "1:1"]),
+});
+
+export type Project = z.infer<typeof ProjectSchema>;
+export type ProjectMetadata = Pick<Project, "id" | "name" | "lastModified">;
+
 export const CompositionProps = z.object({
   title: z.string(),
   videoSrc: z.string().optional(),

@@ -15,14 +15,19 @@ import {
   VIDEO_FPS,
   AspectRatio,
   SourceFile,
+  Project,
+  ProjectMetadata,
 } from "../types/constants";
 import { useHistory } from "../hooks/use-history";
+import { useEffect, useCallback } from "react";
 
-export type EditorView = "management" | "editor";
+export type EditorView = "management" | "editor" | "dashboard";
 
 interface EditorContextType {
   // State
   view: EditorView;
+  activeProject: Project | null;
+  projectsList: ProjectMetadata[];
   sourceFiles: SourceFile[];
   videoSrc: string | undefined; // Still used for preview/single video compatibility if needed
   serverVideoUrl: string | undefined;
@@ -50,6 +55,7 @@ interface EditorContextType {
 
   // Actions
   setView: (view: EditorView) => void;
+  setActiveProject: (project: Project | null) => void;
   setSourceFiles: (
     files: SourceFile[] | ((prev: SourceFile[]) => SourceFile[]),
   ) => void;
@@ -67,6 +73,13 @@ interface EditorContextType {
   setSelectedWordIds: (ids: Set<string>) => void;
   setActiveFileId: (id: string | null) => void;
 
+  // Persistence Actions
+  saveProject: (asNew?: boolean, newName?: string) => Promise<void>;
+  loadProject: (id: string) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
+  createNewProject: (name: string) => void;
+  refreshProjectsList: () => Promise<void>;
+
   // History
   undo: () => void;
   redo: () => void;
@@ -77,7 +90,9 @@ interface EditorContextType {
 const EditorContext = createContext<EditorContextType | undefined>(undefined);
 
 export const EditorProvider = ({ children }: { children: ReactNode }) => {
-  const [view, setView] = useState<EditorView>("management");
+  const [view, setView] = useState<EditorView>("dashboard");
+  const [activeProject, setActiveProject] = useState<Project | null>(null);
+  const [projectsList, setProjectsList] = useState<ProjectMetadata[]>([]);
   const [sourceFiles, setSourceFiles] = useState<SourceFile[]>([]);
   const [videoSrc, setVideoSrc] = useState<string | undefined>(undefined);
   const [serverVideoUrl, setServerVideoUrl] = useState<string | undefined>(
@@ -99,7 +114,148 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
     redo,
     canUndo,
     canRedo,
+    reset: resetHistory,
   } = useHistory<Clip[]>([]);
+
+  const [currentFrame, setCurrentFrame] = useState(0);
+  const lastFrameRef = useRef(0);
+
+  const [selectedRatio, setSelectedRatio] = useState<AspectRatio>("original");
+  const [nativeDimensions, setNativeDimensions] = useState({
+    width: 1280,
+    height: 720,
+  });
+
+  const playerRef = useRef<PlayerRef>(null);
+
+  // Persistence logic
+  const refreshProjectsList = useCallback(async () => {
+    try {
+      const res = await fetch("/api/projects");
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setProjectsList(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch projects list:", err);
+    }
+  }, []);
+
+  const saveProject = useCallback(
+    async (asNew?: boolean, newName?: string) => {
+      if (!activeProject && !asNew) return;
+
+      const projectId = asNew ? `proj-${Date.now()}` : activeProject!.id;
+      const projectName =
+        newName || (activeProject ? activeProject.name : "Untitled Project");
+
+      const projectData: Project = {
+        id: projectId,
+        name: projectName,
+        lastModified: Date.now(),
+        sourceFiles,
+        clips,
+        aspectRatio: selectedRatio,
+      };
+
+      try {
+        const res = await fetch("/api/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(projectData),
+        });
+        if (res.ok) {
+          const result = await res.json();
+          setActiveProject(result.project);
+          refreshProjectsList();
+        }
+      } catch (err) {
+        console.error("Failed to save project:", err);
+      }
+    },
+    [activeProject, sourceFiles, clips, selectedRatio, refreshProjectsList],
+  );
+
+  const loadProject = useCallback(
+    async (id: string) => {
+      try {
+        const res = await fetch(`/api/projects/${id}`);
+        if (res.ok) {
+          const project = (await res.json()) as Project;
+          setActiveProject(project);
+          setSourceFiles(project.sourceFiles);
+          setClips(project.clips);
+          setSelectedRatio(project.aspectRatio);
+          resetHistory(project.clips);
+          setView("management");
+        }
+      } catch (err) {
+        console.error("Failed to load project:", err);
+      }
+    },
+    [setClips, resetHistory],
+  );
+
+  const deleteProject = useCallback(
+    async (id: string) => {
+      try {
+        const res = await fetch(`/api/projects/${id}`, { method: "DELETE" });
+        if (res.ok) {
+          if (activeProject?.id === id) {
+            setActiveProject(null);
+            setView("dashboard");
+          }
+          refreshProjectsList();
+        }
+      } catch (err) {
+        console.error("Failed to delete project:", err);
+      }
+    },
+    [activeProject, refreshProjectsList],
+  );
+
+  const createNewProject = useCallback(
+    (name: string) => {
+      const newId = `proj-${Date.now()}`;
+      const newProj: Project = {
+        id: newId,
+        name,
+        lastModified: Date.now(),
+        sourceFiles: [],
+        clips: [],
+        aspectRatio: "original",
+      };
+      setActiveProject(newProj);
+      setSourceFiles([]);
+      setClips([]);
+      setSelectedRatio("original");
+      resetHistory([]);
+      setView("management");
+      // Initial save
+      fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newProj),
+      }).then(() => refreshProjectsList());
+    },
+    [setClips, resetHistory, refreshProjectsList],
+  );
+
+  // Initial fetch
+  useEffect(() => {
+    refreshProjectsList();
+  }, [refreshProjectsList]);
+
+  // Autosave
+  useEffect(() => {
+    if (!activeProject) return;
+
+    const timer = setTimeout(() => {
+      saveProject();
+    }, 5000); // Autosave every 5 seconds if changes occur
+
+    return () => clearTimeout(timer);
+  }, [activeProject, sourceFiles, clips, selectedRatio, saveProject]);
 
   const [currentFrame, setCurrentFrame] = useState(0);
   const lastFrameRef = useRef(0);
@@ -208,6 +364,8 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
 
   const value: EditorContextType = {
     view,
+    activeProject,
+    projectsList,
     sourceFiles,
     videoSrc,
     serverVideoUrl,
@@ -229,6 +387,7 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
     originalCurrentTime,
     deletedWordIds,
     setView,
+    setActiveProject,
     setSourceFiles,
     setVideoSrc,
     setServerVideoUrl,
@@ -243,6 +402,11 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
     setPaddingDuration,
     setSelectedWordIds,
     setActiveFileId,
+    saveProject,
+    loadProject,
+    deleteProject,
+    createNewProject,
+    refreshProjectsList,
     undo,
     redo,
     canUndo,

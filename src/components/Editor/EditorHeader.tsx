@@ -11,12 +11,34 @@ export const EditorHeader = () => {
   const {
     view,
     setView,
+    activeProject,
+    saveProject,
     selectedRatio,
     setSelectedRatio,
     sourceFiles,
     clips,
     dimensions,
   } = useEditor();
+
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    await saveProject();
+    setTimeout(() => setIsSaving(false), 1000);
+  };
+
+  const handleSaveAs = async () => {
+    const newName = prompt(
+      "Enter new project name:",
+      `${activeProject?.name || "Project"} Copy`,
+    );
+    if (newName) {
+      setIsSaving(true);
+      await saveProject(true, newName);
+      setTimeout(() => setIsSaving(false), 1000);
+    }
+  };
 
   const {
     startRender,
@@ -50,7 +72,10 @@ export const EditorHeader = () => {
     <>
       <header className="h-12 border-b border-[#1d417c] bg-[#022540] flex items-center justify-between px-4 shrink-0 z-50">
         <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
+          <div
+            className="flex items-center gap-2 cursor-pointer"
+            onClick={() => setView("dashboard")}
+          >
             <div className="w-6 h-6 bg-[#9cb2d7] rounded-md flex items-center justify-center">
               <svg
                 className="w-4 h-4 text-[#011626]"
@@ -68,7 +93,28 @@ export const EditorHeader = () => {
             </div>
             <span className="font-bold tracking-tight">Best Take</span>
           </div>
+
+          <div className="h-6 w-px bg-[#1d417c] mx-1" />
+
+          <div className="flex items-center gap-3">
+            {activeProject ? (
+              <span className="text-xs font-bold text-white px-2 py-1 bg-[#1d417c]/50 rounded border border-[#1d417c]">
+                {activeProject.name}
+              </span>
+            ) : (
+              <span className="text-xs font-medium text-[#9cb2d7]/50 italic">
+                No project active
+              </span>
+            )}
+          </div>
+
           <nav className="flex gap-4 text-xs font-medium text-[#9cb2d7]/70">
+            <button
+              onClick={() => setView("dashboard")}
+              className={`hover:text-[#f1f2f3] transition-colors ${view === "dashboard" ? "text-[#f1f2f3] border-b-2 border-[#9cb2d7]" : ""}`}
+            >
+              Dashboard
+            </button>
             <button
               onClick={() => setView("management")}
               className={`hover:text-[#f1f2f3] transition-colors ${view === "management" ? "text-[#f1f2f3] border-b-2 border-[#9cb2d7]" : ""}`}
@@ -84,6 +130,23 @@ export const EditorHeader = () => {
           </nav>
         </div>
         <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 mr-2">
+            <button
+              onClick={handleSave}
+              disabled={!activeProject || isSaving}
+              className="text-[#9cb2d7] hover:text-white text-[10px] font-bold uppercase tracking-widest px-2 py-1 transition-colors disabled:opacity-30"
+            >
+              {isSaving ? "Saving..." : "Save"}
+            </button>
+            <button
+              onClick={handleSaveAs}
+              disabled={!activeProject || isSaving}
+              className="text-[#9cb2d7] hover:text-white text-[10px] font-bold uppercase tracking-widest px-2 py-1 transition-colors disabled:opacity-30"
+            >
+              Save As
+            </button>
+          </div>
+
           <div className="w-32">
             <Dropdown
               options={ratioOptions}

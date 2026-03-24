@@ -11,10 +11,12 @@ import { useSilenceDetection } from "../../hooks/use-silence-detection";
 import { useEditorActions } from "../../hooks/use-editor-actions";
 import { useMountEffect } from "../../hooks/use-mount-effect";
 import { ClipManagement } from "./ClipManagement/ClipManagement";
+import { ProjectDashboard } from "./ProjectDashboard";
 
 export const EditorLayout = () => {
   const {
     view,
+    activeProject,
     sourceFiles,
     serverVideoUrl,
     transcription,
@@ -109,6 +111,15 @@ export const EditorLayout = () => {
       window.removeEventListener("popstate", handlePopState);
     };
   });
+
+  if (view === "dashboard") {
+    return (
+      <div className="h-screen flex flex-col bg-[#011626] text-[#f1f2f3] overflow-hidden">
+        <EditorHeader />
+        <ProjectDashboard />
+      </div>
+    );
+  }
 
   if (view === "management") {
     return (

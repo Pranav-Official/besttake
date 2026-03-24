@@ -69,5 +69,11 @@ export function useHistory<T>(initialState: T, capacity: number = 20) {
   const canUndo = pointer.current > 0;
   const canRedo = pointer.current < history.current.length - 1;
 
-  return { state, set, undo, redo, canUndo, canRedo };
+  const reset = useCallback((newState: T) => {
+    setState(newState);
+    history.current = [newState];
+    pointer.current = 0;
+  }, []);
+
+  return { state, set, undo, redo, canUndo, canRedo, reset };
 }
