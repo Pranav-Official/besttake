@@ -18,12 +18,13 @@ const calculateMetadata: CalculateMetadataFunction<TCompositionProps> = async ({
     return { durationInFrames: 300 };
   }
 
-  const totalDuration = clips.reduce((acc, clip) => {
-    return acc + (clip.sourceEnd - clip.sourceStart);
+  const durationInFrames = clips.reduce((acc, clip) => {
+    const duration = clip.sourceEnd - clip.sourceStart;
+    return acc + Math.max(1, Math.round(duration * VIDEO_FPS));
   }, 0);
 
   return {
-    durationInFrames: Math.max(1, Math.ceil(totalDuration * VIDEO_FPS)),
+    durationInFrames: Math.max(1, durationInFrames),
   };
 };
 

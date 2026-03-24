@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
           codec: "h264",
           outputLocation: outputPath,
           inputProps,
-          concurrency: 8,
+          concurrency: 4, // Balanced for stability and speed with OffthreadVideo
           onProgress: ({ progress }) => {
             store.set(renderId, {
               ...store.get(renderId)!,
