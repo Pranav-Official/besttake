@@ -33,6 +33,10 @@ export const EditorLayout = () => {
     setPaddingDuration,
     selectedWordIds,
     setSelectedWordIds,
+    activeFileId,
+    activeTimelineId,
+    zoom,
+    setZoom,
   } = useEditor();
 
   const { onDeleteWords, onSplitAtPlayhead } = useEditorActions();
@@ -43,27 +47,56 @@ export const EditorLayout = () => {
     noiseThreshold: number,
     minDuration: number,
   ) => {
-    if (!serverVideoUrl || sourceFiles.length === 0) return;
+    const activeFile = sourceFiles.find((f) => f.id === activeFileId);
+
+    console.log("onTrimSilences called with:", {
+      noiseThreshold,
+      minDuration,
+      serverVideoUrl,
+      activeFileId,
+    });
+
+    if (!serverVideoUrl || !activeFile) {
+      console.warn(
+        "Returning early from onTrimSilences: missing serverVideoUrl or activeFile",
+      );
+      return;
+    }
     try {
       const audibleParts = await trimSilences({
         serverVideoUrl,
         noiseThreshold,
         minDuration,
       });
-      const firstFileId = sourceFiles[0].id;
-      const nextClips = audibleParts.map((part, i) => {
-        const finalPadding = paddingEnabled ? paddingDuration : 0;
-        return {
-          id: `audible-${i}-${Date.now()}`,
-          fileId: firstFileId,
-          sourceStart: Math.max(0, part.startInSeconds - finalPadding),
-          sourceEnd: Math.min(
-            transcription[transcription.length - 1]?.end || 10000,
-            part.endInSeconds + finalPadding,
-          ),
-          logicalStart: part.startInSeconds,
-          logicalEnd: part.endInSeconds,
-        };
+
+      // Instead of ignoring current clips, intersect audible parts with existing clips
+      const nextClips: typeof clips = [];
+
+      clips.forEach((clip) => {
+        const lStart = clip.logicalStart ?? clip.sourceStart;
+        const lEnd = clip.logicalEnd ?? clip.sourceEnd;
+
+        // Find audible parts that overlap with this clip
+        audibleParts.forEach((part) => {
+          const overlapStart = Math.max(lStart, part.startInSeconds);
+          const overlapEnd = Math.min(lEnd, part.endInSeconds);
+
+          // If there is a valid audible overlap within this clip
+          if (overlapStart < overlapEnd) {
+            const finalPadding = paddingEnabled ? paddingDuration : 0;
+            nextClips.push({
+              id: `${clip.id}-audible-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+              fileId: clip.fileId,
+              sourceStart: Math.max(0, overlapStart - finalPadding),
+              sourceEnd: Math.min(
+                activeFile.duration || 10000,
+                overlapEnd + finalPadding,
+              ),
+              logicalStart: overlapStart,
+              logicalEnd: overlapEnd,
+            });
+          }
+        });
       });
 
       if (nextClips.length > 0) {
@@ -129,6 +162,7 @@ export const EditorLayout = () => {
       </main>
 
       <TimelineEditor
+        key={activeTimelineId || "default"}
         transcription={transcription}
         clips={clips}
         onClipsChange={setClips}
@@ -141,6 +175,8 @@ export const EditorLayout = () => {
         onTrimSilences={onTrimSilences}
         isTrimmingSilences={isTrimmingSilences}
         onSplitAtPlayhead={onSplitAtPlayhead}
+        zoom={zoom}
+        onZoomChange={setZoom}
         onSeek={(frame) => {
           playerRef.current?.seekTo(frame);
           setCurrentFrame(frame);

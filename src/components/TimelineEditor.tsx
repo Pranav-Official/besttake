@@ -16,6 +16,8 @@ interface TimelineEditorProps {
   onTrimSilences: (noiseThreshold: number, minDuration: number) => void;
   isTrimmingSilences: boolean;
   onSplitAtPlayhead?: () => void;
+  zoom: number;
+  onZoomChange: (zoom: number) => void;
   className?: string;
 }
 
@@ -33,9 +35,10 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
   onTrimSilences,
   isTrimmingSilences,
   onSplitAtPlayhead,
+  zoom,
+  onZoomChange,
   className,
 }) => {
-  const [zoom, setZoom] = useState(50); // pixels per second
   const containerRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
 
@@ -657,7 +660,7 @@ export const TimelineEditor: React.FC<TimelineEditorProps> = ({
                 min="10"
                 max="300"
                 value={zoom}
-                onChange={(e) => setZoom(parseInt(e.target.value))}
+                onChange={(e) => onZoomChange(parseInt(e.target.value))}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
               />
               <div

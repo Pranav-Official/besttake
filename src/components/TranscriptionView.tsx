@@ -4,6 +4,8 @@ import { cn } from "../lib/utils";
 import { Badge } from "./Badge";
 import { useEditor } from "../context/EditorContext";
 
+import { Button } from "./Button";
+
 interface TranscriptionViewProps {
   transcription: WordTranscription[];
   clips: Clip[];
@@ -15,6 +17,8 @@ interface TranscriptionViewProps {
   deletedWordIds: Set<string>;
   selectedWordIds: Set<string>;
   onSelectionChange: (ids: Set<string>) => void;
+  onBestTake?: () => void;
+  isProcessingBestTake?: boolean;
   className?: string;
 }
 
@@ -28,6 +32,8 @@ export const TranscriptionView: React.FC<TranscriptionViewProps> = ({
   onSplitClip,
   selectedWordIds,
   onSelectionChange,
+  onBestTake,
+  isProcessingBestTake,
   className,
 }) => {
   const { sourceFiles } = useEditor();
@@ -159,7 +165,54 @@ export const TranscriptionView: React.FC<TranscriptionViewProps> = ({
             Transcript Editor
           </h2>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          {onBestTake && (
+            <Button
+              variant="ghost"
+              size="md"
+              onClick={onBestTake}
+              disabled={isProcessingBestTake || transcription.length === 0}
+              className={cn(
+                "relative font-extrabold transition-all duration-300 px-6 border-2 border-transparent shadow-lg",
+                !isProcessingBestTake && transcription.length > 0
+                  ? "hover:scale-[1.02] active:scale-[0.98]"
+                  : "border-[#1d417c] bg-[#1d417c]/10 text-[#9cb2d7]/50",
+              )}
+              style={
+                !isProcessingBestTake && transcription.length > 0
+                  ? {
+                      backgroundImage:
+                        "linear-gradient(#022540, #022540), linear-gradient(to right, #818cf8, #c084fc)",
+                      backgroundOrigin: "border-box",
+                      backgroundClip: "padding-box, border-box",
+                    }
+                  : {}
+              }
+            >
+              <span
+                className={cn(
+                  "flex items-center gap-2 relative z-10",
+                  !isProcessingBestTake &&
+                    transcription.length > 0 &&
+                    "bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent",
+                )}
+              >
+                {isProcessingBestTake ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" />
+                    <span className="text-indigo-400/70 text-sm">
+                      Processing...
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-base leading-none">✨</span>
+                    <span className="tracking-tight text-sm">Best Take</span>
+                  </>
+                )}
+              </span>
+            </Button>
+          )}
           <Badge
             variant="accent"
             className="bg-[#7ead70]/10 border-[#7ead70]/20 text-[#7ead70]"
@@ -175,7 +228,7 @@ export const TranscriptionView: React.FC<TranscriptionViewProps> = ({
         onMouseLeave={() => setIsDragging(false)}
         onMouseUp={handleMouseUp}
       >
-        <div className="text-xl leading-[1.8] tracking-tight">
+        <div className="text-lg leading-[1.5] tracking-tight">
           {renderedItems.length === 0 ? (
             <div className="w-full h-full flex flex-col items-center justify-center py-20 text-center opacity-30 italic">
               <p>No text in timeline.</p>

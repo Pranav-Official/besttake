@@ -31,6 +31,12 @@ export const ClipSchema = z.object({
   logicalEnd: z.number().optional(), // in seconds (unpadded)
 });
 
+export const TimelineSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  clips: z.array(ClipSchema),
+});
+
 export const CompositionProps = z.object({
   title: z.string(),
   videoSrc: z.string().optional(),
@@ -42,6 +48,7 @@ export const CompositionProps = z.object({
 export type WordTranscription = z.infer<typeof WordTranscriptionSchema>;
 export type SourceFile = z.infer<typeof SourceFileSchema>;
 export type Clip = z.infer<typeof ClipSchema>;
+export type Timeline = z.infer<typeof TimelineSchema>;
 export type TCompositionProps = z.infer<typeof CompositionProps>;
 
 export type AspectRatio = "original" | "16:9" | "9:16" | "1:1";

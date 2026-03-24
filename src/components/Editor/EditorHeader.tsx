@@ -16,6 +16,10 @@ export const EditorHeader = () => {
     sourceFiles,
     clips,
     dimensions,
+    timelines,
+    activeTimelineId,
+    setActiveTimelineId,
+    removeTimeline,
   } = useEditor();
 
   const {
@@ -84,6 +88,54 @@ export const EditorHeader = () => {
           </nav>
         </div>
         <div className="flex items-center gap-4">
+          {view === "editor" && timelines.length > 1 && (
+            <div className="flex items-center gap-2 mr-4 bg-[#1d417c]/30 p-1 rounded-lg">
+              {timelines.map((t) => (
+                <div key={t.id} className="relative group flex items-center">
+                  <button
+                    onClick={() => setActiveTimelineId(t.id)}
+                    className={`text-xs px-3 py-1 rounded-md transition-colors pr-6 ${
+                      activeTimelineId === t.id
+                        ? "bg-[#9cb2d7] text-[#011626] font-bold"
+                        : "text-[#9cb2d7] hover:bg-[#1d417c]/50"
+                    }`}
+                  >
+                    {t.name}
+                  </button>
+                  {t.id !== "original" && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (
+                          confirm(
+                            `Are you sure you want to delete timeline "${t.name}"?`,
+                          )
+                        ) {
+                          removeTimeline(t.id);
+                        }
+                      }}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-500 hover:text-white text-[#9cb2d7] transition-all"
+                      title="Delete timeline"
+                    >
+                      <svg
+                        width="10"
+                        height="10"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
           <div className="w-32">
             <Dropdown
               options={ratioOptions}
