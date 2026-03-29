@@ -136,8 +136,8 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
 
   const [selectedRatio, setSelectedRatio] = useState<AspectRatio>("original");
   const [nativeDimensions, setNativeDimensions] = useState({
-    width: 1280,
-    height: 720,
+    width: 1920,
+    height: 1080,
   });
 
   const playerRef = useRef<PlayerRef>(null);
@@ -216,7 +216,7 @@ export const EditorProvider = ({ children }: { children: ReactNode }) => {
 
   // Derived: dimensions
   const dimensions = useMemo(() => {
-    const baseHeight = 720;
+    const baseHeight = 1080;
     let w, h;
 
     if (selectedRatio === "original") {

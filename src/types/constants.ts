@@ -43,6 +43,12 @@ export const CompositionProps = z.object({
   sourceFiles: z.array(SourceFileSchema).optional(), // Added
   transcription: z.array(WordTranscriptionSchema).optional(),
   clips: z.array(ClipSchema).optional(),
+  dimensions: z
+    .object({
+      width: z.number(),
+      height: z.number(),
+    })
+    .optional(),
 });
 
 export type WordTranscription = z.infer<typeof WordTranscriptionSchema>;
@@ -61,6 +67,6 @@ export const defaultMyCompProps: TCompositionProps = {
 };
 
 export const DURATION_IN_FRAMES = 600; // Increased to 20s for demo
-export const VIDEO_WIDTH = 1280;
-export const VIDEO_HEIGHT = 720;
+export const VIDEO_WIDTH = 1920;
+export const VIDEO_HEIGHT = 1080;
 export const VIDEO_FPS = 30;

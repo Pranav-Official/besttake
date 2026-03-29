@@ -36,6 +36,8 @@ export const POST = executeApi<RenderMediaOnLambdaOutput, typeof RenderRequest>(
 
     const result = await renderMediaOnLambda({
       codec: "h264",
+      crf: 16,
+      audioBitrate: "320k",
       functionName: speculateFunctionName({
         diskSizeInMb: DISK,
         memorySizeInMb: RAM,

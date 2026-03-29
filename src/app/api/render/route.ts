@@ -28,6 +28,34 @@ export async function GET(request: NextRequest) {
 }
 
 /**
+ * Cancel render endpoint (DELETE /api/render?id=...)
+ */
+export async function DELETE(request: NextRequest) {
+  const id = request.nextUrl.searchParams.get("id");
+  if (!id)
+    return NextResponse.json({ error: "No ID provided" }, { status: 400 });
+
+  const store = getRenderStore();
+  const status = store.get(id);
+
+  if (!status) {
+    return NextResponse.json({ error: "Render not found" }, { status: 404 });
+  }
+
+  // Mark as done/cancelled in store.
+  // Note: True cancellation of a backgrounded renderMedia is complex as it's not natively abortable via simple flag,
+  // but we can stop the polling and UI state.
+  store.set(id, {
+    ...status,
+    done: true,
+    status: "Cancelled by user",
+    error: "Render was cancelled",
+  });
+
+  return NextResponse.json({ success: true });
+}
+
+/**
  * Start render endpoint (POST /api/render)
  * Initiates a local video render using Remotion's bundle and renderMedia.
  * The render runs in the background and updates a local store for polling.
@@ -40,7 +68,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { videoSrc, clips, sourceFiles } = body;
+    const { videoSrc, clips, sourceFiles, dimensions } = body;
 
     if (!clips) {
       return NextResponse.json(
@@ -91,6 +119,7 @@ export async function POST(request: NextRequest) {
           sourceFiles,
           clips,
           title: "Exported Video",
+          dimensions,
         };
 
         const compositionId = "MyComp";
@@ -115,6 +144,9 @@ export async function POST(request: NextRequest) {
           composition,
           serveUrl: cachedBundle,
           codec: "h264",
+          crf: 16, // High quality, visually lossless (preferred over videoBitrate)
+          audioBitrate: "320k", // High audio quality
+          pixelFormat: "yuv420p",
           outputLocation: outputPath,
           inputProps,
           concurrency: 8,

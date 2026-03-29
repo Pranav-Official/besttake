@@ -14,8 +14,17 @@ const calculateMetadata: CalculateMetadataFunction<TCompositionProps> = async ({
   props,
 }) => {
   const clips = props.clips || [];
+  const dimensions = props.dimensions || {
+    width: VIDEO_WIDTH,
+    height: VIDEO_HEIGHT,
+  };
+
   if (clips.length === 0) {
-    return { durationInFrames: 300 };
+    return {
+      durationInFrames: 300,
+      width: dimensions.width,
+      height: dimensions.height,
+    };
   }
 
   const totalDuration = clips.reduce((acc, clip) => {
@@ -24,6 +33,8 @@ const calculateMetadata: CalculateMetadataFunction<TCompositionProps> = async ({
 
   return {
     durationInFrames: Math.max(1, Math.ceil(totalDuration * VIDEO_FPS)),
+    width: dimensions.width,
+    height: dimensions.height,
   };
 };
 

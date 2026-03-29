@@ -51,6 +51,20 @@ export const useRenderManager = () => {
     refetchInterval: (query) => (query.state.data?.done ? false : 1000),
   });
 
+  const cancelRenderMutation = useMutation({
+    mutationFn: async () => {
+      if (!renderId) return;
+      const res = await fetch(`/api/render?id=${renderId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to cancel render");
+      return res.json();
+    },
+    onSuccess: () => {
+      setRenderId(null);
+    },
+  });
+
   const reset = () => {
     setRenderId(null);
     startRenderMutation.reset();
@@ -58,6 +72,7 @@ export const useRenderManager = () => {
 
   return {
     startRender: startRenderMutation.mutateAsync,
+    cancelRender: cancelRenderMutation.mutateAsync,
     isRendering: !!renderId && !statusQuery.data?.done,
     progress: statusQuery.data?.progress ?? 0,
     status: statusQuery.data?.status ?? "",
